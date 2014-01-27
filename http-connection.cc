@@ -12,11 +12,15 @@
 #include <errno.h>
 #include <string.h>
 
+#include <iostream>
+#include <sstream>
+
 #include <signal.h>
 #include <sys/wait.h>
 
 // Socket Libraries
 #include <sys/socket.h>
+#include <sys/poll.h>
 #include <sys/types.h>
 #include <netinet/in.h>
 #include <netdb.h>
@@ -144,3 +148,74 @@ int makeClientConnection(const char *host, const char *port)
     if (DEBUG) printf("makeServerConnection:Success\n");
     return sockfd;
 }
+
+/*
+
+  const int MAXDATASIZE=64;
+  char buffer[MAXDATASIZE];
+  string temp;
+  int rv;
+  
+  struct pollfd ufds;
+  ufds.fd = sockfd; // open socket # corresponding to the connection
+  ufds.events = POLLIN;
+  
+  while(true) {
+    temp = "";
+    for(int i=0;i<MAXDATASIZE; i++) buffer[i] = '\0'; //make sure it's empty- not sure if necessary
+
+
+    //wait for events on the sockets with a half second timeout
+    while((rv = poll(&ufds, 1, 500)) > 0 && recv(sockfd, buffer, sizeof(buffer), 0) > 0)
+    {
+      temp.append(buffer);
+    } 
+
+    HttpRequest request;
+
+    if(temp.size() == 0) { // no data => sleep for half a second then try again
+      sleep(500);
+      continue;
+    }
+    
+    try {
+      request.ParseRequest (temp.c_str(), temp.size());
+
+     //Debugging **************
+        cout <<"Original \t \t "<<endl<<temp<<endl<<" \t \t Parsed \t"<<endl;
+
+        cout <<"GET "<<request.GetHost()<<":"<<request.GetPort()<<request.GetPath()
+          <<" HTTP/"<<request.GetVersion()<<endl;
+
+        string header;
+        if((header = request.FindHeader("Connection")).size() > 0)
+          cout<<"Connection: "<<header<<endl;
+        if((header = request.FindHeader("User-Agent")).size() > 0)
+          cout<<"User-Agent: "<<header<<endl;
+      //Debugging *********
+
+    //set up proxy cache here.
+
+      if(strcmp(request.FindHeader("Connection").c_str(), "close") == 0 ||
+         strcmp(request.GetVersion().c_str(), "1.0") == 0)
+        break;   // If the connection is not persisent => close
+    } 
+    catch (ParseException e) {
+      const char* input = e.what(); //returns msg.c_str()
+      HttpResponse reply;
+      reply.SetVersion("1.1");
+
+      cout<<"Parse exception: "<<e.what()<<endl;
+
+      if(strcmp(input, "Request is not GET") == 0) {
+        reply.SetStatusCode("501");
+        reply.SetStatusMsg("Not Implemented");
+      } else {
+        reply.SetStatusCode("400");
+        reply.SetStatusMsg("Bad Request");
+      }
+
+      char buff[reply.GetTotalLength()];
+      reply.FormatResponse(buff);
+      send(sockfd, buff, reply.GetTotalLength(), 0); // 
+    }*/
