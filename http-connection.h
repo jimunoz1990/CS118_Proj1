@@ -10,7 +10,8 @@
 #include <iostream>
 
 #define DEBUG 1
-#define PORT "14886"
+#define PROXY_PORT "14886"
+#define REMOTE_PORT "80"
 #define BACKLOG 20
 
 void *get_in_addr(struct sockaddr *sa);

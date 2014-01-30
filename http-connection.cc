@@ -37,6 +37,7 @@ void *get_in_addr(struct sockaddr *sa)
 }
 
 /* @brief Makes server listener
+ * Used Beej's guide as reference
  */
 int makeServerConnection(const char *port)
 {
@@ -100,6 +101,7 @@ int makeServerConnection(const char *port)
 }
 
 /* @brief Makes client
+ * Used Beej's guide as reference
  */
 int makeClientConnection(const char *host, const char *port)
 {

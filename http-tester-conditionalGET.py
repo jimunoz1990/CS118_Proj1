@@ -4,14 +4,29 @@ from threading import Thread
 from httplib import HTTPConnection
 from BaseHTTPServer import BaseHTTPRequestHandler,HTTPServer
 from datetime import datetime, timedelta
-from bcolor import bcolors
+#from bcolor import bcolors
 import sys
 import time
 import re, socket, calendar
 
+class bcolors:
+    HEADER = '\033[95m'
+    OKBLUE = '\033[94m'
+    OKGREEN = '\033[92m'
+    WARNING = '\033[93m'
+    FAIL = '\033[91m'
+    ENDC = '\033[0m'
+    
+    def disable(self):
+        self.HEADER = ''
+        self.OKBLUE = ''
+        self.OKGREEN = ''
+        self.WARNING = ''
+        self.FAIL = ''
+        self.ENDC = ''
 
 class TestHandler(BaseHTTPRequestHandler):
-
+    
     def do_GET(self):
         if self.path == "/basic":
             lms = self.headers.get('If-Modified-Since', "")
@@ -46,7 +61,7 @@ class TestHandler(BaseHTTPRequestHandler):
                     self.send_header('Content-length', str(size))
                     self.send_header('Expires',expireDate)
                     self.send_header('Last-Modified', lastModify)
-
+            
             else:
                 cdata = open("./basic", "r").read()
                 size = len(cdata)
@@ -57,13 +72,13 @@ class TestHandler(BaseHTTPRequestHandler):
                 self.send_header('Content-length', str(size))
                 self.send_header('Expires',expireDate)
                 self.send_header('Last-Modified', lastModify)
-
+            
             if self.close_connection == True:
                 self.send_header('Connection', 'close')
             self.end_headers()
             if cdata != "":
                 self.wfile.write(cdata)
-
+        
         return
 
 
@@ -71,7 +86,7 @@ class ServerThread (Thread):
     def __init__(self, port):
         Thread.__init__(self)
         self.port = port
-
+    
     def run(self):
         try:
             TestHandler.protocol_version = "HTTP/1.1"
@@ -79,7 +94,7 @@ class ServerThread (Thread):
             self.server = HTTPServer(('', self.port), TestHandler)
             self.server.serve_forever()
         except KeyboardInterrupt:
-            self.server.socket.close() 
+            self.server.socket.close()
 
 
 try:
@@ -98,29 +113,29 @@ try:
     resp = conn.getresponse()
     data = resp.read()
     conn.close()
-
+    
     time.sleep(3)
     conn2 = HTTPConnection(proxy)
     conn2.request("GET", "http://127.0.0.1:" + sport1 + "/basic")
     resp2 = conn2.getresponse()
     data2 = resp2.read()
     conn2.close()
-
+    
     time.sleep(3)
     conn3 = HTTPConnection(proxy)
     conn3.request("GET", "http://127.0.0.1:" + sport1 + "/basic")
     resp3 = conn3.getresponse()
     data3 = resp3.read()
     conn3.close()
-
+    
     time.sleep(6)
     conn4 = HTTPConnection(proxy)
     conn4.request("GET", "http://127.0.0.1:" + sport1 + "/basic")
     resp4 = conn4.getresponse()
     data4 = resp4.read()
     conn4.close()
-
-
+    
+    
     if data4 == "OK" and data3 == cdata and data2 == cdata:
         r = True
     if r:
@@ -131,4 +146,3 @@ except:
     server1.server.shutdown()
 
 server1.server.shutdown()
-

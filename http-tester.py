@@ -4,12 +4,28 @@ from threading import Thread
 from httplib import HTTPConnection
 from BaseHTTPServer import BaseHTTPRequestHandler,HTTPServer
 from datetime import datetime, timedelta
-from bcolor import bcolors
+#from bcolor import bcolors
 import sys
 import time
 
-class TestHandler(BaseHTTPRequestHandler):
+class bcolors:
+    HEADER = '\033[95m'
+    OKBLUE = '\033[94m'
+    OKGREEN = '\033[92m'
+    WARNING = '\033[93m'
+    FAIL = '\033[91m'
+    ENDC = '\033[0m'
+    
+    def disable(self):
+        self.HEADER = ''
+        self.OKBLUE = ''
+        self.OKGREEN = ''
+        self.WARNING = ''
+        self.FAIL = ''
+        self.ENDC = ''
 
+class TestHandler(BaseHTTPRequestHandler):
+    
     def do_GET(self):
         if self.path == "/basic":
             cdata = open("./basic", "r").read()
@@ -20,7 +36,7 @@ class TestHandler(BaseHTTPRequestHandler):
             time.sleep(3)
         if self.path == "/cacheTest":
             cdata = str(time.time())
-
+        
         size = len(cdata)
         expireDate=(datetime.now()+timedelta(days=1)).strftime("%a, %d %b %Y %H:%M:%S GMT")
         lastModify=(datetime.now()+timedelta(days=-1)).strftime("%a, %d %b %Y %H:%M:%S GMT")
@@ -33,22 +49,22 @@ class TestHandler(BaseHTTPRequestHandler):
             self.send_header('Connection', 'close')
         self.end_headers()
         self.wfile.write(cdata)
-
+        
         return
 
 class ServerThread (Thread):
     def __init__(self, port):
         Thread.__init__(self)
         self.port = port
-
+    
     def run(self):
         try:
             TestHandler.protocol_version = "HTTP/1.1"
             self.server = HTTPServer(('', self.port), TestHandler)
             self.server.serve_forever()
         except KeyboardInterrupt:
-            self.server.socket.close()                                                                                                                                                       
-    
+            self.server.socket.close()
+
 class ClientThread (Thread):
     def __init__(self, proxy, url, file):
         Thread.__init__(self)
@@ -57,18 +73,18 @@ class ClientThread (Thread):
         self.file = file
         self.result = False
         self.data = ""
-
+    
     def run(self):
-
+        
         if self.file:
             dataFile = open(self.file, "r")
             cdata = dataFile.read()
-        
+            
             conn = HTTPConnection(self.proxy)
             conn.request("GET", self.url)
             resp = conn.getresponse()
             rdata = resp.read()
-
+            
             if rdata == cdata:
                 self.result = True
             self.data = rdata
@@ -93,36 +109,36 @@ class ClientPersistThread(Thread):
         self.url2 = url2
         self.file2 = file2
         self.result = False
-
+    
     def run(self):
         conn = HTTPConnection(self.proxy)
         tmpFlag = True
-
+        
         dataFile = open(self.file, "r")
         cdata = dataFile.read()
         dataFile = open(self.file2, "r")
         cdata2 = dataFile.read()
-
+        
         conn.request("GET", self.url)
         resp = conn.getresponse()
         rdata = resp.read()
         if rdata != cdata:
             tmpFlag = False
-            
+        
         if resp.will_close == True:
             tmpFlag = False
-
+        
         connHdrs = {"Connection": "close"}
         conn.request("GET", self.url2, headers=connHdrs)
-
+        
         resp = conn.getresponse()
         rdata2 = resp.read()
         if rdata2 != cdata2:
             tmpFlag = False
-
+        
         if resp.will_close == False:
             tmpFlag = False
-
+        
         if tmpFlag == True:
             self.result = True
         conn.close()
@@ -156,9 +172,9 @@ client1 = ClientThread("127.0.0.1:" + pport, "http://127.0.0.1:" + sport1 + "/ba
 client1.start()
 client1.join()
 if client1.result:
-    print "Basic object fetching: [" + bcolors.PASS + "PASSED" + bcolors.ENDC + "]" 
-else: 
-    print "Basic object fetching: [" + bcolors.FAIL + "FAILED" + bcolors.ENDC + "]" 
+    print "Basic object fetching: [" + bcolors.PASS + "PASSED" + bcolors.ENDC + "]"
+else:
+    print "Basic object fetching: [" + bcolors.FAIL + "FAILED" + bcolors.ENDC + "]"
 
 client2 = ClientPersistThread("127.0.0.1:" + pport, "http://127.0.0.1:" + sport1 + "/basic", "./basic", "http://127.0.0.1:" + sport1 + "/basic2", "./basic2")
 client2.start()
@@ -174,7 +190,7 @@ client4 = ClientThread("127.0.0.1:" + pport, "http://127.0.0.1:"+ sport2 +"/basi
 start = time.time()
 client3.start()
 client4.start()
- 
+
 client3.join()
 client4.join()
 end = time.time()
