@@ -122,6 +122,7 @@ public:
 
 /* How to implement:
 
+
 //we may also have to add the locking and unlocking of threads, but since I'm not entirely sure how that works, so I didn't put it in
 
 if (status==200)
@@ -140,10 +141,15 @@ if (status==200)
 	//error check
 		if((expireT=convertTime(expireTime))!=0 && difftime(expireT, current)>0)
 		{
-			//add to cache with expire time
+			Page pg(expireTime, lastMod, eTag, data);
+			//lock
+			cache.add(URL, pg);
+			//unlock
 		}
 		else{
-			//expire time couldn't be read?? do not add to cache
+			//lock
+			cache.remove(URL);
+			//unlock
 		}
 	}
 	else if (cacheCheck!=""){
@@ -152,19 +158,28 @@ if (status==200)
 		if((maxT=cacheParse(cacheCheck))!=0 && date!="")
 		{
 			expireT = converTime(date)+maxT;
-			//add to cache w/ cache control
+			Page pg(expireT, lastMod, eTag, data);
+			//lock
 			cache.add(URL, pg);
+			//unlock
 		}
 		else
 		{
+			//lock
 			cache.remove(URL);
+			//unlock
 		}
 	}
 	else{ // no data on cache
+		//lock
 		cache.remove(URL);
+		//unlock
 	}
 }
-else if(status== "something else"){ // don't know if we're gonna implement any others...
+else if(status== "304"){ 
+        //lock
+        data = cache.get(url)->getData();
+        //unlock
 }
 */
 
