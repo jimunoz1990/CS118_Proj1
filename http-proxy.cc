@@ -7,6 +7,7 @@
 #include <string>
 #include <string.h>
 #include <time.h>
+#include <map>
 
 #include <iostream>
 #include <sstream>
