@@ -6,6 +6,7 @@
 #include <pthread.h>
 #include <string>
 #include <string.h>
+#include <time.h>
 
 #include <iostream>
 #include <sstream>
@@ -29,6 +30,142 @@
 using namespace std;
 
 #define BUFFER_SIZE 1024
+
+
+class Page{
+
+private:
+	time_t expire;
+    string lastModify;
+    string eTag;
+    string data;
+	
+public:
+    Page(time_t expTime, string lastMod, string entityTag, string dat){
+        expire = expTime;
+        eTag = entityTag;
+        lastModify = lastMod;
+        data = dat;
+    }
+	string getLastModify(){
+        return lastModify;
+    }
+    
+    time_t getExpire(void){
+        return expireTime;
+    }
+	 
+	string getETag(){
+        return eTag;
+    }
+    
+    string getData(void){
+        return data;
+    }
+    
+    bool isExpired(){
+        time_t current = time(&timer); //get current time
+		//debug
+        //cout << "Difference: "<<difftime(expireTime, current)<<" \n Current: "<<current<<" \n Expire: " <<expireTime << endl;
+        if(difftime(expireTime, current)<0)
+            return true;
+        else
+            return false;
+    }
+};
+
+// do some parsing for the cache class
+long cacheParse(string s){ //cache-control: public, private, no cache, no store
+    if(s.find("public")!=string::npos || s.find("private")!=string::npos || s.find("no-cache")!=string::npos || s.find("no-store")!=string::npos)
+        return 0; //string::npos max value for size_t- could also use -1
+		
+    size_t position = string::npos;
+    if ((pos = s.find("max-age"))!=string::npos) {
+        size_t begin = s.find('=');
+        if(begin != string::npos){ //long vs int
+            long maxAge = atol(s.substr(begin+1).c_str());
+			//debug
+			//cout << "max time: " <<time<< endl;
+            return maxAge;
+        }
+    }
+    return 0;
+}
+
+
+class Cache{
+
+private:
+    map<string, Page> store;
+	
+public:
+	
+    Page* get(string URL){
+        map<string,Page>::iterator iter;
+        iter = store.find(URL); // check if the URL is stored in the cache
+        if(iter == store.end())  // if not return null
+			return NULL;
+        else 
+			return &iter->second; // if it is, return the Page
+    }
+    
+	void remove(string URL){ // remove when time expires
+        store.erase(URL);
+    }
+	
+    void add(string URL, Page webpg){ // add to cache
+        store.erase(URL);
+        store.insert(map<string, Page>::value_type(URL, webpg));
+    }
+} cache; // declare cache as a cache object
+
+/* How to implement:
+
+//we may also have to add the locking and unlocking of threads, but since I'm not entirely sure how that works, so I didn't put it in
+
+if (status==200)
+{
+	string expireTime = reply.FindHeader("Expires");
+	string cacheCheck = reply.FindHeader("Cache-Control");
+	string eTag = reply.FindHeader("ETag");
+	string date = reply.FindHeader("Date");
+	string lastMod = reply.FindHeader("Last-Modified");
+	//or whatever our HttpResponse file is called now
+
+	time_t current=time(&time);
+	time_t expireT;
+
+	if(expireTime!=""){ //page is not in the cache
+	//error check
+		if((expireT=convertTime(expireTime))!=0 && difftime(expireT, current)>0)
+		{
+			//add to cache with expire time
+		}
+		else{
+			//expire time couldn't be read?? do not add to cache
+		}
+	}
+	else if (cacheCheck!=""){
+		//long vs int
+		long maxT =0;
+		if((maxT=cacheParse(cacheCheck))!=0 && date!="")
+		{
+			expireT = converTime(date)+maxT;
+			//add to cache w/ cache control
+			cache.add(URL, pg);
+		}
+		else
+		{
+			cache.remove(URL);
+		}
+	}
+	else{ // no data on cache
+		cache.remove(URL);
+	}
+}
+else if(status== "something else"){ // don't know if we're gonna implement any others...
+}
+*/
 
 
 /*@brief Fetch data from remote host
