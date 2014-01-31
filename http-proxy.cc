@@ -36,14 +36,14 @@ using namespace std;
 class Page{
 
 private:
-	time_t expire;
+	time_t expireTime;
     string lastModify;
     string eTag;
     string data;
 	
 public:
     Page(time_t expTime, string lastMod, string entityTag, string dat){
-        expire = expTime;
+        expireTime = expTime;
         eTag = entityTag;
         lastModify = lastMod;
         data = dat;
@@ -65,9 +65,11 @@ public:
     }
     
     bool isExpired(){
-        time_t current = time(&timer); //get current time
-		//debug
-        //cout << "Difference: "<<difftime(expireTime, current)<<" \n Current: "<<current<<" \n Expire: " <<expireTime << endl;
+        time_t current = time(0); // Get current time
+		
+        // Debug
+        if (DEBUG) cout << "Difference: "<<difftime(expireTime, current)<<" \n Current: "<<current<<" \n Expire: " <<expireTime << endl;
+        
         if(difftime(expireTime, current)<0)
             return true;
         else
@@ -75,13 +77,13 @@ public:
     }
 };
 
-// do some parsing for the cache class
-long cacheParse(string s){ //cache-control: public, private, no cache, no store
+// Do some parsing for the cache class
+long cacheParse(string s) { //cache-control: public, private, no cache, no store
     if(s.find("public")!=string::npos || s.find("private")!=string::npos || s.find("no-cache")!=string::npos || s.find("no-store")!=string::npos)
         return 0; //string::npos max value for size_t- could also use -1
 		
     size_t position = string::npos;
-    if ((pos = s.find("max-age"))!=string::npos) {
+    if ((position = s.find("max-age"))!=string::npos) {
         size_t begin = s.find('=');
         if(begin != string::npos){ //long vs int
             long maxAge = atol(s.substr(begin+1).c_str());
@@ -213,14 +215,14 @@ void connectionHandler(int sock_fd)
     int rv;
     
     struct pollfd ufds;
-    ufds.fd = sock_fd; // open socket # corresponding to the connection
+    ufds.fd = sock_fd; // Open socket # corresponding to the connection
     ufds.events = POLLIN;
     
     while (1) {
         temp = "";
         for(int i = 0; i < BUFFER_SIZE; i++) buffer[i] = '\0'; //make sure it's empty- not sure if necessary
         
-        //wait for events on the sockets with a half second timeout
+        // Wait for events on the sockets with a half second timeout
         while((rv = poll(&ufds, 1, 500)) > 0 && recv(sock_fd, buffer, sizeof(buffer), 0) > 0)
         {
             temp.append(buffer);
@@ -235,16 +237,13 @@ void connectionHandler(int sock_fd)
         }
 
         try {
-            if (DEBUG) cout << "In try..." << endl;
+            if (DEBUG) cout << "Trying..." << endl;
             request.ParseRequest (temp.c_str(), temp.size());
-            
             
             if (DEBUG) {
                 cout <<"Original \t \t "<<endl<<temp<<endl<<" \t \t Parsed \t"<<endl;
-                
                 cout <<"GET "<<request.GetHost()<<":"<<request.GetPort()<<request.GetPath()
                 <<" HTTP/"<<request.GetVersion()<<endl;
-                
                 string header;
                 if((header = request.FindHeader("Connection")).size() > 0)
                     cout<<"Connection: "<<header<<endl;
@@ -254,6 +253,8 @@ void connectionHandler(int sock_fd)
             
             
             // If request in cache,
+            
+                // TODO
             
             // Else (not in cache, request to remote server)
             
@@ -266,7 +267,7 @@ void connectionHandler(int sock_fd)
             }
             
             
-            // Send request
+            // Send request to remote server
             char request_string [request.GetTotalLength()];
             request.FormatRequest(request_string);
             if (send(remote_fd, request_string, request.GetTotalLength(), 0) == -1) {
@@ -282,13 +283,17 @@ void connectionHandler(int sock_fd)
             }
             
             if (DEBUG) cout << "Reponse string:" << response << endl;
-                // Store in cache
-                
-                // Return request to original client
-                
-                // Close connection to remote server
             
+            // TODO: Store in cache
+                
             
+            // Return request to original client
+            if (send(sock_fd, response.c_str(), response.length(), 0)) {
+                // Error with send
+                // Cleanup/exit?
+            }
+            
+            // Close connection to remote server
             if(strcmp(request.FindHeader("Connection").c_str(), "close") == 0 ||
                strcmp(request.GetVersion().c_str(), "1.0") == 0)
                 break; // If the connection is not persisent => close
@@ -327,9 +332,7 @@ int main (int argc, char *argv[])
         fprintf(stderr, "fail to make server\n");
         return 1;
     }
-
     printf("Proxy server: waiting for connections...\n");
-    
     
     // TODO: initialize cache
     
@@ -344,7 +347,7 @@ int main (int argc, char *argv[])
         char s[INET6_ADDRSTRLEN];
         
         int new_fd = accept(sockfd, (struct sockaddr *)&their_addr, &sin_size);  // New connection
-        if (new_fd == -1) {
+        if (new_fd < 0) {
             perror("accept");
             continue;
         }
@@ -378,5 +381,6 @@ int main (int argc, char *argv[])
          */
     }
 
+    close(sockfd);
     return 0;
 }

@@ -167,10 +167,14 @@ server2 = ServerThread(int(sport2))
 server1.start()
 server2.start()
 
+print "HERE"
 
 client1 = ClientThread("127.0.0.1:" + pport, "http://127.0.0.1:" + sport1 + "/basic", "./basic")
 client1.start()
 client1.join()
+
+print "HERE2"
+
 if client1.result:
     print "Basic object fetching: [" + bcolors.PASS + "PASSED" + bcolors.ENDC + "]"
 else:
