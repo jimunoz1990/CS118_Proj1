@@ -31,7 +31,7 @@
 using namespace std;
 
 #define BUFFER_SIZE 1024
-
+#define TIMEOUT 100
 
 class Page{
 
@@ -190,25 +190,47 @@ else if(status== "304"){
  */
 int fetchFromRemoteHost(int sock_fd, string& response)
 {
+    if (DEBUG) cout << "In fetchFromRemoteHost..." << endl;
+
+    int count = 0;
     char buffer[BUFFER_SIZE];
+    int recv_num;
+    
+    struct pollfd ufds;
+    ufds.fd = sock_fd;
+    ufds.events = POLLIN;
+    
     while (1) {
-        int recv_num = recv(sock_fd, buffer, sizeof(buffer), 0);
-        if (recv_num < 0) {
-            return -1;
+        if (DEBUG) cout << "Receive attempt:" << count << endl;
+        
+        while (poll(&ufds, 1, TIMEOUT) > 0) {
+            recv_num = recv(sock_fd, buffer, sizeof(buffer), 0);
+            if (DEBUG) cout << "Recv_num:" << recv_num << endl;
+            if (recv_num < 0) {
+                cout << "Receive error" << endl;
+                return -1;
+            }
+            else if (recv_num == 0) {
+                cout << "Rec = 0" << endl;
+                break;
+            }
+            response.append(buffer, recv_num);
+            if (DEBUG) cout << response << endl;
         }
-        else if (recv_num == 0) {
+        if (count < 35) {
+            usleep(100000);
+            count++;
+        } else {
             break;
         }
-        response.append(buffer, recv_num);
     }
     return 0;
 }
 
-/*@brief Handles connection for each client
+/*@brief Handles connection for each client thread
  */
 void connectionHandler(int sock_fd)
 {
-    
     // Buffer
     char buffer[BUFFER_SIZE];
     string temp;
@@ -229,7 +251,7 @@ void connectionHandler(int sock_fd)
         }
         
         HttpRequest request;
-        
+
         if(temp.size() == 0) { // No data => sleep for 1 second then try again
             if (DEBUG) cout << "(Client thread) Still waiting..." << endl;
             sleep(1);
@@ -242,7 +264,7 @@ void connectionHandler(int sock_fd)
             
             if (DEBUG) {
                 cout <<"Original \t \t "<<endl<<temp<<endl<<" \t \t Parsed \t"<<endl;
-                cout <<"GET "<<request.GetHost()<<":"<<request.GetPort()<<request.GetPath()
+                cout << "GET " << request.GetHost() << ":" << request.GetPort() << request.GetPath()
                 <<" HTTP/"<<request.GetVersion()<<endl;
                 string header;
                 if((header = request.FindHeader("Connection")).size() > 0)
@@ -259,15 +281,18 @@ void connectionHandler(int sock_fd)
             // Else (not in cache, request to remote server)
             
                 // Make client connection to remote server
-            if (DEBUG) cout << "Making client connection from proxy to remote server..." << endl;
-            int remote_fd = makeClientConnection(request.FindHeader("Host").c_str(), REMOTE_PORT);
+            if (DEBUG) cout << "Calling makeClientConnection to host:" << request.GetHost() << " port:" << request.GetPort() << endl;
+
+            char port[6];
+            sprintf(port, "%u", request.GetPort());
+            int remote_fd = makeClientConnection(request.GetHost().c_str(), port);
             if (remote_fd < 0) {
-                fprintf(stderr, "Fail to connect to remote server.\n");
-                // Exit?
+                perror("Remote connection");
+                close(sock_fd);
             }
             
-            
             // Send request to remote server
+            if (DEBUG) cout << "Sending request to remote server..." << endl;
             char request_string [request.GetTotalLength()];
             request.FormatRequest(request_string);
             if (send(remote_fd, request_string, request.GetTotalLength(), 0) == -1) {
@@ -276,27 +301,27 @@ void connectionHandler(int sock_fd)
             }
             
                 // Get data from remote host
+            if (DEBUG) cout << "Fetching data from server..." << endl;
             string response;
             if (fetchFromRemoteHost(remote_fd, response) < 0) {
-                // Error with response
-                // Exit?
+                perror("Fetch");
             }
             
             if (DEBUG) cout << "Reponse string:" << response << endl;
             
             // TODO: Store in cache
-                
             
             // Return request to original client
-            if (send(sock_fd, response.c_str(), response.length(), 0)) {
-                // Error with send
-                // Cleanup/exit?
+            if (send(sock_fd, response.c_str(), response.length(), 0) == -1) {
+                perror("Send");
             }
             
             // Close connection to remote server
             if(strcmp(request.FindHeader("Connection").c_str(), "close") == 0 ||
                strcmp(request.GetVersion().c_str(), "1.0") == 0)
                 break; // If the connection is not persisent => close
+            
+            if (DEBUG) cout << "Done processing..." << endl;
         }
         catch (ParseException e) {
             const char* input = e.what(); //returns msg.c_str()
@@ -332,7 +357,7 @@ int main (int argc, char *argv[])
         fprintf(stderr, "fail to make server\n");
         return 1;
     }
-    printf("Proxy server: waiting for connections...\n");
+    cout << "Proxy server: waiting for connections..." << endl;
     
     // TODO: initialize cache
     
@@ -358,27 +383,7 @@ int main (int argc, char *argv[])
             // Using Boost
             if (DEBUG) cout << "Making new thread with boost..." << endl;
             t_group.create_thread(boost::bind(&connectionHandler, new_fd));
-            
         }
-        
-        //send(new_fd, "Hello and Goodbye\n", 17, 0);
-        /*
-        if (!fork()) { // this is the child process
-            close(sockfd); // child doesn't need the listener
-            if (send(new_fd, "Hello, world!", 13, 0) == -1)
-            perror("send");
-            close(new_fd);
-            exit(0);
-        }*/
-        
-        
-        /* pthread implementation
-        // Make thread to handle connection
-        int *new_sock = (int *)malloc(sizeof(1));
-        *new_sock = new_fd;
-        pthread_t newThread;
-        pthread_create(&newThread, NULL, connectionHandler, (void *)new_sock); 
-         */
     }
 
     close(sockfd);

@@ -41,6 +41,7 @@ void *get_in_addr(struct sockaddr *sa)
  */
 int makeServerConnection(const char *port)
 {
+    if (DEBUG) cout << "Making server connection on port:" << port << endl;
     int sockfd;
     
     struct addrinfo hints;
@@ -58,7 +59,7 @@ int makeServerConnection(const char *port)
     
     if ((status = getaddrinfo(NULL, port, &hints, &servinfo)) != 0) {
         fprintf(stderr, "getaddrinfo: %s\n", gai_strerror(status));
-        return 1;
+        return -1;
     }
     
     // Loop through all the results and bind to the first we can
@@ -84,7 +85,7 @@ int makeServerConnection(const char *port)
     // No binds
     if (p == NULL)  {
         fprintf(stderr, "server: failed to bind\n");
-        return 2;
+        return -2;
     }
     
     freeaddrinfo(servinfo);             // Clean up struct
@@ -105,6 +106,8 @@ int makeServerConnection(const char *port)
  */
 int makeClientConnection(const char *host, const char *port)
 {
+    if (DEBUG) cout << "Making client connection on host:" << host << " port:" << port << endl;
+    
     int sockfd;
 
     struct addrinfo hints;
@@ -120,18 +123,18 @@ int makeClientConnection(const char *host, const char *port)
     
     if ((status = getaddrinfo(host, port, &hints, &servinfo)) != 0) {
         fprintf(stderr, "getaddrinfo: %s\n", gai_strerror(status));
-        return 1;
+        return -1;
     }
     
     // Loop through all the results and connect to the first we can
     for (p = servinfo; p != NULL; p = p->ai_next) {
         if ((sockfd = socket(p->ai_family, p->ai_socktype, p->ai_protocol)) == -1) {
-            perror("client: socket");
+            perror("Socket");
             continue;
         }
         if (connect(sockfd, p->ai_addr, p->ai_addrlen) == -1) {
             close(sockfd);
-            perror("client: connect");
+            perror("Connect");
             continue;
         }
         break;
@@ -139,15 +142,15 @@ int makeClientConnection(const char *host, const char *port)
     
     // No binds
     if (p == NULL) {
-        fprintf(stderr, "client: failed to connect\n");
-        return 2;
+        perror("Bind");
+        return -2;
     }
     
     inet_ntop(p->ai_family, get_in_addr((struct sockaddr *)p->ai_addr), s, sizeof s);
     printf("client: connecting to %s\n", s);
     
     freeaddrinfo(servinfo); // all done with this structure
-    if (DEBUG) printf("makeServerConnection:Success\n");
+    if (DEBUG) printf("makeClientConnection:Success\n");
     return sockfd;
 }
 
