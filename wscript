@@ -41,6 +41,8 @@ def build (env):
             "http-request.cc",
             "http-response.cc",
             "http-connection.cc",
+            "http-cache.cc",
+            "http-page.cc",
             ]
         )
 

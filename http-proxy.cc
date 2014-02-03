@@ -23,6 +23,8 @@
 #include "http-request.h"
 #include "http-response.h"
 #include "http-connection.h"
+#include "http-cache.h"
+#include "http-page.h"
 
 // Boost
 #include <boost/thread.hpp>
@@ -33,50 +35,9 @@ using namespace std;
 #define BUFFER_SIZE 1024
 #define TIMEOUT 100
 
-class Page{
+static Cache cache;
 
-private:
-	time_t expireTime;
-    string lastModify;
-    string eTag;
-    string data;
-	
-public:
-    Page(time_t expTime, string lastMod, string entityTag, string dat){
-        expireTime = expTime;
-        eTag = entityTag;
-        lastModify = lastMod;
-        data = dat;
-    }
-	string getLastModify(){
-        return lastModify;
-    }
-    
-    time_t getExpire(void){
-        return expireTime;
-    }
-	 
-	string getETag(){
-        return eTag;
-    }
-    
-    string getData(void){
-        return data;
-    }
-    
-    bool isExpired(){
-        time_t current = time(0); // Get current time
-		
-        // Debug
-        if (DEBUG) cout << "Difference: "<<difftime(expireTime, current)<<" \n Current: "<<current<<" \n Expire: " <<expireTime << endl;
-        
-        if(difftime(expireTime, current)<0)
-            return true;
-        else
-            return false;
-    }
-};
-
+/*
 // Do some parsing for the cache class
 long cacheParse(string s) { //cache-control: public, private, no cache, no store
     if(s.find("public")!=string::npos || s.find("private")!=string::npos || s.find("no-cache")!=string::npos || s.find("no-store")!=string::npos)
@@ -95,35 +56,7 @@ long cacheParse(string s) { //cache-control: public, private, no cache, no store
     return 0;
 }
 
-
-class Cache{
-
-private:
-    map<string, Page> store;
-	
-public:
-	
-    Page* get(string URL){
-        map<string,Page>::iterator iter;
-        iter = store.find(URL); // check if the URL is stored in the cache
-        if(iter == store.end())  // if not return null
-			return NULL;
-        else 
-			return &iter->second; // if it is, return the Page
-    }
-    
-	void remove(string URL){ // remove when time expires
-        store.erase(URL);
-    }
-	
-    void add(string URL, Page webpg){ // add to cache
-        store.erase(URL);
-        store.insert(map<string, Page>::value_type(URL, webpg));
-    }
-} cache; // declare cache as a cache object
-
-/* How to implement:
-
+// How to implement:
 
 //we may also have to add the locking and unlocking of threads, but since I'm not entirely sure how that works, so I didn't put it in
 
@@ -227,6 +160,56 @@ int fetchFromRemoteHost(int sock_fd, string& response)
     return 0;
 }
 
+
+/*@brief Make remote request connection
+ */
+void makeRequestConnection(HttpRequest request)
+{
+    // Grab lock to cache
+    char port[6];
+    sprintf(port, "%u", request.GetPort());
+    // Make client connection
+    int remote_fd = makeClientConnection(request.GetHost().c_str(), port);
+    if (remote_fd < 0) {
+        perror("Remote connection");
+        //close(sock_fd);
+    }
+    
+    // Send request to remote server
+    if (DEBUG) cout << "Sending request to remote server..." << endl;
+    char request_string [request.GetTotalLength()];
+    request.FormatRequest(request_string);
+    if (send(remote_fd, request_string, request.GetTotalLength(), 0) == -1) {
+        perror("Send");
+        close(remote_fd);
+        // Exit?
+    }
+    
+    // Get data from remote host
+    if (DEBUG) cout << "Fetching data from server..." << endl;
+    string response_string;
+    if (fetchFromRemoteHost(remote_fd, response_string) < 0) {
+        perror("Fetch");
+    }
+    
+    if (DEBUG) cout << "Reponse string:" << response_string << endl;
+    
+    /* TODO: Store in cache
+     */
+    HttpResponse response;
+    response.ParseResponse(response_string.c_str(), response_string.size());
+    string expireTime = response.FindHeader("Expires");
+	string lastMod = response.FindHeader("Last-Modified");
+	string eTag = response.FindHeader("ETag");
+    Page thisPage = Page(expireTime, lastMod, eTag, response_string);
+
+    cache.cache_mutex.lock();
+    cache.add(request.GetHost().c_str(), thisPage);
+    cache.cache_mutex.unlock();
+    
+    close(remote_fd);
+}
+
 /*@brief Handles connection for each client thread
  */
 void connectionHandler(int sock_fd)
@@ -241,6 +224,7 @@ void connectionHandler(int sock_fd)
     ufds.events = POLLIN;
     
     while (1) {
+        if (DEBUG) cout << "While looping.." << endl;
         temp = "";
         for(int i = 0; i < BUFFER_SIZE; i++) buffer[i] = '\0'; //make sure it's empty- not sure if necessary
         
@@ -273,53 +257,42 @@ void connectionHandler(int sock_fd)
                     cout<<"User-Agent: "<<header<<endl;
             }
             
-            
             // If request in cache,
             
                 // TODO
             
             // Else (not in cache, request to remote server)
             
+                /* Remote connection should be in a new thread
+                 * because this->thread is between client-proxy
+                 * while remote connection is between proxy-remote server
+                 */
+        
                 // Make client connection to remote server
-            if (DEBUG) cout << "Calling makeClientConnection to host:" << request.GetHost() << " port:" << request.GetPort() << endl;
+            if (DEBUG) cout << "Calling makeRequestConnection to host:" << request.GetHost() << " port:" << request.GetPort() << endl;
 
-            char port[6];
-            sprintf(port, "%u", request.GetPort());
-            int remote_fd = makeClientConnection(request.GetHost().c_str(), port);
-            if (remote_fd < 0) {
-                perror("Remote connection");
-                close(sock_fd);
-            }
+            // Create new remote thread
+            boost::thread remote_thread(makeRequestConnection, request);
+            if (DEBUG) cout << "Waiting for remote thread..." << endl;
+            // Wait for remote thread to exit
+            remote_thread.join();
             
-            // Send request to remote server
-            if (DEBUG) cout << "Sending request to remote server..." << endl;
-            char request_string [request.GetTotalLength()];
-            request.FormatRequest(request_string);
-            if (send(remote_fd, request_string, request.GetTotalLength(), 0) == -1) {
-                close(remote_fd);
-                // Exit?
-            }
+            // Get page from cache
+            Page *this_page = cache.get(request.GetHost());
+            string response = this_page->getData();
             
-                // Get data from remote host
-            if (DEBUG) cout << "Fetching data from server..." << endl;
-            string response;
-            if (fetchFromRemoteHost(remote_fd, response) < 0) {
-                perror("Fetch");
-            }
-            
-            if (DEBUG) cout << "Reponse string:" << response << endl;
-            
-            // TODO: Store in cache
-            
-            // Return request to original client
+            // Return response, as-in from remote server, to original client
             if (send(sock_fd, response.c_str(), response.length(), 0) == -1) {
                 perror("Send");
             }
             
+            // Remove from cache for now
+            cache.remove(request.GetHost());
+            
             // Close connection to remote server
             if(strcmp(request.FindHeader("Connection").c_str(), "close") == 0 ||
                strcmp(request.GetVersion().c_str(), "1.0") == 0)
-                break; // If the connection is not persisent => close
+            break; // If the connection is not persisent => close
             
             if (DEBUG) cout << "Done processing..." << endl;
         }

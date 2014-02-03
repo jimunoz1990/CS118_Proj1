@@ -4,8 +4,8 @@
  *
  */
 
-//#ifndef __CS118_Lab1__http_connection__
-//#define __CS118_Lab1__http_connection__
+#ifndef __CS118_Lab1__http_connection__
+#define __CS118_Lab1__http_connection__
 
 #include <iostream>
 
@@ -18,4 +18,4 @@ void *get_in_addr(struct sockaddr *sa);
 int makeServerConnection(const char *port);
 int makeClientConnection(const char *host, const char *port);
 
-//#endif /* defined(__CS118_Lab1__http_connection__) */
+#endif /* defined(__CS118_Lab1__http_connection__) */

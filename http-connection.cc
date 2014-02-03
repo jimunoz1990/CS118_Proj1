@@ -106,7 +106,7 @@ int makeServerConnection(const char *port)
  */
 int makeClientConnection(const char *host, const char *port)
 {
-    if (DEBUG) cout << "Making client connection on host:" << host << " port:" << port << endl;
+    if (DEBUG) cout << "Making client connection to host:" << host << " port:" << port << endl;
     
     int sockfd;
 
@@ -122,7 +122,7 @@ int makeClientConnection(const char *host, const char *port)
     hints.ai_socktype = SOCK_STREAM;
     
     if ((status = getaddrinfo(host, port, &hints, &servinfo)) != 0) {
-        fprintf(stderr, "getaddrinfo: %s\n", gai_strerror(status));
+        perror("getaddrinfo");
         return -1;
     }
     
@@ -147,10 +147,10 @@ int makeClientConnection(const char *host, const char *port)
     }
     
     inet_ntop(p->ai_family, get_in_addr((struct sockaddr *)p->ai_addr), s, sizeof s);
-    printf("client: connecting to %s\n", s);
+    //printf("client: connecting to %s on sock_fd:%d\n", s, sockfd);
     
     freeaddrinfo(servinfo); // all done with this structure
-    if (DEBUG) printf("makeClientConnection:Success\n");
+    if (DEBUG) printf("makeClientConnection:Success server:%s sockfd:%d\n", s, sockfd);
     return sockfd;
 }
 
