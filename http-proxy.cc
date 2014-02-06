@@ -150,7 +150,8 @@ int fetchFromRemoteHost(int sock_fd, string& response)
             response.append(buffer, recv_num);
             if (DEBUG) cout << response << endl;
         }
-        if (count < 35) {
+        // Retry if count < 35 and no response
+        if (count < 35 && response.size() == 0) {
             usleep(100000);
             count++;
         } else {
@@ -163,7 +164,7 @@ int fetchFromRemoteHost(int sock_fd, string& response)
 
 /*@brief Make remote request connection
  */
-void makeRequestConnection(HttpRequest request)
+void makeRequestConnection(HttpRequest request, int sock_fd)
 {
     // Grab lock to cache
     char port[6];
@@ -193,6 +194,11 @@ void makeRequestConnection(HttpRequest request)
     }
     
     if (DEBUG) cout << "Reponse string:" << response_string << endl;
+    
+    // Return response, as-in from remote server, to original client
+    if (send(sock_fd, response_string.c_str(), response_string.size(), 0) == -1) {
+        perror("Send");
+    }
     
     /* TODO: Store in cache
      */
@@ -272,22 +278,20 @@ void connectionHandler(int sock_fd)
             if (DEBUG) cout << "Calling makeRequestConnection to host:" << request.GetHost() << " port:" << request.GetPort() << endl;
 
             // Create new remote thread
-            boost::thread remote_thread(makeRequestConnection, request);
+            boost::thread remote_thread(makeRequestConnection, request, sock_fd);
             if (DEBUG) cout << "Waiting for remote thread..." << endl;
             // Wait for remote thread to exit
             remote_thread.join();
             
+            /* Old implementation of using cache to pass data from remote->proxy->client
             // Get page from cache
             Page *this_page = cache.get(request.GetHost());
             string response = this_page->getData();
-            
-            // Return response, as-in from remote server, to original client
-            if (send(sock_fd, response.c_str(), response.length(), 0) == -1) {
-                perror("Send");
-            }
+           
             
             // Remove from cache for now
             cache.remove(request.GetHost());
+            */
             
             // Close connection to remote server
             if(strcmp(request.FindHeader("Connection").c_str(), "close") == 0 ||

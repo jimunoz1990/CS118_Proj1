@@ -218,6 +218,13 @@ if r:
 else:
     print "Concurrent Connection: [" + bcolors.FAIL + "FAILED" + bcolors.ENDC + "]"
 
+print "--- DEBUG ---"
+print "end - start:", end-start
+print "client3.data:", client3.data, "client3.data == cdata:", client3.data == cdata
+print "client4.data:", client4.data, "client4.data == cdata:", client4.data == cdata
+print "-------------"
+print "HERE after test 3"
+
 client5 = ClientThread("127.0.0.1:" + pport, "http://127.0.0.1:"+sport1+"/cacheTest", "./basic")
 client5.start()
 client5.join()
