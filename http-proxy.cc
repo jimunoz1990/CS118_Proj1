@@ -37,7 +37,16 @@ using namespace std;
 
 static Cache cache;
 
-/*
+
+/* TODO List:
+ * 1) Add logic to cache unless specified not to in response header
+ * 2) Add additional cache to keep track of proxy->remote server connection
+ * 3) Implement proxy->remote server connection caching
+ * 4) Implement conditional GET
+ */
+
+
+/* TODO: clear up this code
 // Do some parsing for the cache class
 long cacheParse(string s) { //cache-control: public, private, no cache, no store
     if(s.find("public")!=string::npos || s.find("private")!=string::npos || s.find("no-cache")!=string::npos || s.find("no-store")!=string::npos)
@@ -200,17 +209,19 @@ void makeRequestConnection(HttpRequest request, int sock_fd)
         perror("Send");
     }
     
-    /* TODO: Store in cache
+    /* TODO: Need to add logic to add cache only if specified in header
      */
+    
     HttpResponse response;
     response.ParseResponse(response_string.c_str(), response_string.size());
     string expireTime = response.FindHeader("Expires");
 	string lastMod = response.FindHeader("Last-Modified");
 	string eTag = response.FindHeader("ETag");
     Page thisPage = Page(expireTime, lastMod, eTag, response_string);
-
+    string key = request.GetHost() + "/" + request.GetPath();
+    
     cache.cache_mutex.lock();
-    cache.add(request.GetHost().c_str(), thisPage);
+    cache.add(key, thisPage);
     cache.cache_mutex.unlock();
     
     close(remote_fd);
@@ -220,7 +231,6 @@ void makeRequestConnection(HttpRequest request, int sock_fd)
  */
 void connectionHandler(int sock_fd)
 {
-    // Buffer
     char buffer[BUFFER_SIZE];
     string temp;
     int rv;
@@ -255,7 +265,7 @@ void connectionHandler(int sock_fd)
             if (DEBUG) {
                 cout <<"Original \t \t "<<endl<<temp<<endl<<" \t \t Parsed \t"<<endl;
                 cout << "GET " << request.GetHost() << ":" << request.GetPort() << request.GetPath()
-                <<" HTTP/"<<request.GetVersion()<<endl;
+                << " HTTP/" << request.GetVersion() << endl;
                 string header;
                 if((header = request.FindHeader("Connection")).size() > 0)
                     cout<<"Connection: "<<header<<endl;
@@ -263,42 +273,35 @@ void connectionHandler(int sock_fd)
                     cout<<"User-Agent: "<<header<<endl;
             }
             
+            /* TODO: implement cache logic
+             */
             // If request in cache,
-            
-                // TODO
-            
-            // Else (not in cache, request to remote server)
-            
-                /* Remote connection should be in a new thread
-                 * because this->thread is between client-proxy
-                 * while remote connection is between proxy-remote server
-                 */
-        
-                // Make client connection to remote server
-            if (DEBUG) cout << "Calling makeRequestConnection to host:" << request.GetHost() << " port:" << request.GetPort() << endl;
-
-            // Create new remote thread
-            boost::thread remote_thread(makeRequestConnection, request, sock_fd);
-            if (DEBUG) cout << "Waiting for remote thread..." << endl;
-            // Wait for remote thread to exit
-            remote_thread.join();
-            
-            /* Old implementation of using cache to pass data from remote->proxy->client
-            // Get page from cache
-            Page *this_page = cache.get(request.GetHost());
-            string response = this_page->getData();
-           
-            
-            // Remove from cache for now
-            cache.remove(request.GetHost());
-            */
-            
-            // Close connection to remote server
-            if(strcmp(request.FindHeader("Connection").c_str(), "close") == 0 ||
-               strcmp(request.GetVersion().c_str(), "1.0") == 0)
-            break; // If the connection is not persisent => close
-            
-            if (DEBUG) cout << "Done processing..." << endl;
+            string key = request.GetHost() + "/" + request.GetPath();
+            if (DEBUG) cout << "** Checking if:" << key << " is in cache...." << endl;
+            Page * this_page = cache.get(key);
+            if (this_page) {
+                if (DEBUG) cout << "Request in cache." << endl;
+                // Get from cache and send to client
+                if (send(sock_fd, this_page->getData().c_str(), this_page->getData().size(), 0) == -1) {
+                    perror("Send");
+                }
+            }
+            else {
+                if (DEBUG) cout << "Calling makeRequestConnection to host:" << request.GetHost() << " port:" << request.GetPort() << endl;
+                
+                // Create new thread to handle proxy->remote server connection
+                boost::thread remote_thread(makeRequestConnection, request, sock_fd);
+                if (DEBUG) cout << "Waiting for remote thread..." << endl;
+                // Wait for remote thread to exit
+                remote_thread.join();
+                
+                // Close connection to remote server
+                if(strcmp(request.FindHeader("Connection").c_str(), "close") == 0 ||
+                   strcmp(request.GetVersion().c_str(), "1.0") == 0)
+                    break; // If the connection is not persisent => close
+                
+                if (DEBUG) cout << "Done processing..." << endl;
+            }
         }
         catch (ParseException e) {
             const char* input = e.what(); //returns msg.c_str()
@@ -335,9 +338,6 @@ int main (int argc, char *argv[])
         return 1;
     }
     cout << "Proxy server: waiting for connections..." << endl;
-    
-    // TODO: initialize cache
-    
     
     // Create Boost
     boost::thread_group t_group;
