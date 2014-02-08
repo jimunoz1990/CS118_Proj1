@@ -22,24 +22,43 @@ using namespace std;
 class Cache {
     
 private:
-    
+    /*@brief Caches pages from remote-server
+     *       Key: URL, Value: instance of Page class
+     */
     map<string, Page> store;
+    
+    /*@brief Caches proxy->remote-server connections
+     *       Key: URL, Value: connection sock_fd
+     */
+    map<string, int> connections;
 	
 public:
-    
-    /*@brief Get value from cache
+    /*@brief Get value from cache store
      */
-    Page* get(string URL);
+    Page* getFromStore(string URL);
     
-    /*@brief Remove from cache
+    /*@brief Remove from cache store
      */
-	void remove(string URL);
+	void removeFromStore(string URL);
     
-    /*@brief Add to cache
+    /*@brief Add to cache store
      */
-    void add(string URL, Page webpg);
+    void addToStore(string URL, Page webpg);
     
-    boost::mutex cache_mutex;
+    /*@brief Add proxy->remote-server connection sock_fd to connections
+     */
+    void addToConnections(string URL, int sock_fd);
+    
+    /*@brief Return sock_fd for existing proxy->remote-server connection
+     */
+    int getFromConnections(string URL);
+    
+    /*@brief Rremove from cache connections
+     */
+    void removeFromConnections(string URL);
+     
+    boost::mutex cache_store_mutex;
+    boost::mutex cache_connections_mutex;
     
 }; //cache; // declare cache as a Cache object
 

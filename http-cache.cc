@@ -36,8 +36,10 @@
 
 using namespace std;
 
-Page* Cache::get(string URL) {
-    map<string,Page>::iterator iter;
+/* Cache store functions
+ */
+Page* Cache::getFromStore(string URL) {
+    map<string, Page>::iterator iter;
     iter = store.find(URL); // check if the URL is stored in the cache
     if(iter == store.end())  // if not return null
         return NULL;
@@ -45,11 +47,30 @@ Page* Cache::get(string URL) {
         return &iter->second; // if it is, return the Page
 }
 
-void Cache::remove(string URL) {
+void Cache::removeFromStore(string URL) {
     store.erase(URL);
 }
 
-void Cache::add(string URL, Page webpg) {
+void Cache::addToStore(string URL, Page webpg) {
     store.erase(URL);
     store.insert(map<string, Page>::value_type(URL, webpg));
+}
+
+/* Cache connections functions 
+ */
+void Cache::addToConnections(string URL, int sock_fd) {
+    connections.insert(map<string, int>::value_type(URL, sock_fd));
+}
+
+int Cache::getFromConnections(string URL) {
+    map<string, int>::iterator iter;
+    iter = connections.find(URL);
+    if (iter == connections.end())
+        return -1;
+    else
+        return iter->second;
+}
+
+void Cache::removeFromConnections(string URL) {
+    connections.erase(URL);
 }

@@ -40,8 +40,8 @@ static Cache cache;
 
 /* TODO List:
  * 1) Add logic to cache unless specified not to in response header
- * 2) Add additional cache to keep track of proxy->remote server connection
- * 3) Implement proxy->remote server connection caching
+ * 2) DONE, SK (Add additional cache to keep track of proxy->remote server connection)
+ * 3) DONE, SK (Implement proxy->remote server connection caching)
  * 4) Implement conditional GET
  */
 
@@ -149,11 +149,11 @@ int fetchFromRemoteHost(int sock_fd, string& response)
             recv_num = recv(sock_fd, buffer, sizeof(buffer), 0);
             if (DEBUG) cout << "Recv_num:" << recv_num << endl;
             if (recv_num < 0) {
-                cout << "Receive error" << endl;
+                if (DEBUG) cout << "Receive error" << endl;
                 return -1;
             }
             else if (recv_num == 0) {
-                cout << "Rec = 0" << endl;
+                if (DEBUG) cout << "Rec = 0" << endl;
                 break;
             }
             response.append(buffer, recv_num);
@@ -167,7 +167,13 @@ int fetchFromRemoteHost(int sock_fd, string& response)
             break;
         }
     }
-    return 0;
+    if (response.size() == 0) {
+        if (DEBUG) cout << "Empty fetch..." << endl;
+        return -1;
+    }
+    else {
+        return 1;
+    }
 }
 
 
@@ -175,14 +181,74 @@ int fetchFromRemoteHost(int sock_fd, string& response)
  */
 void makeRequestConnection(HttpRequest request, int sock_fd)
 {
-    // Grab lock to cache
+    if (DEBUG) cout << "\nIn makeRequestConnection..." << endl;
+    
     char port[6];
     sprintf(port, "%u", request.GetPort());
-    // Make client connection
-    int remote_fd = makeClientConnection(request.GetHost().c_str(), port);
-    if (remote_fd < 0) {
-        perror("Remote connection");
-        //close(sock_fd);
+    
+    // Check cache for existing proxy->remote server connection
+    
+    string connections_key = request.GetHost() + ":" + port;
+    if (DEBUG) cout << "Checking if:" << connections_key << " is in connections cache..." << endl;
+    
+    cache.cache_connections_mutex.lock();
+    int proxy_server_sock_fd = cache.getFromConnections(connections_key);
+    cache.cache_connections_mutex.unlock();
+    
+    int remote_fd;
+    
+    // If proxy->remote-server connection exits
+    if (proxy_server_sock_fd > 0) {
+        if (DEBUG) cout << "Previous connection exists, sock_fd:" << proxy_server_sock_fd << endl;
+        // Check if connection is still alive
+        
+        int poll_status;
+        struct pollfd ufds;
+        ufds.fd = proxy_server_sock_fd;
+        ufds.events = POLLRDHUP;
+        if ((poll_status = poll(&ufds, 1, 0)) == 0) {
+            if (DEBUG) cout << "Connection alive" << endl;
+            remote_fd = proxy_server_sock_fd;
+        } else  {
+            if (DEBUG) cout << "Connection dead, poll_status:" << poll_status << endl;
+            // Close dead connection sock_fd
+            close(proxy_server_sock_fd);
+            
+            // Remove from cache connections
+            cache.cache_connections_mutex.lock();
+            cache.removeFromConnections(connections_key);
+            cache.cache_connections_mutex.unlock();
+            
+            // Make client connection
+            remote_fd = makeClientConnection(request.GetHost().c_str(), port);
+            if (remote_fd < 0) {
+                perror("Remote connection");
+                //close(sock_fd);
+            }
+            
+            // Cache proxy->remote-server connection sock_fd
+            if (DEBUG) cout << "Caching proxy->remote-server connection" << endl;
+            string connection_key = request.GetHost();
+            cache.cache_connections_mutex.lock();
+            cache.addToConnections(connections_key, remote_fd);
+            cache.cache_connections_mutex.unlock();
+        }
+    }
+    // Else, make a new one
+    else {
+        // Make client connection
+        remote_fd = makeClientConnection(request.GetHost().c_str(), port);
+        if (remote_fd < 0) {
+            perror("Remote connection");
+            //close(sock_fd);
+        }
+        
+        // Cache proxy->remote-server connection sock_fd
+        if (DEBUG) cout << "Caching proxy->remote-server connection" << endl;
+        string connection_key = request.GetHost();
+        cache.cache_connections_mutex.lock();
+        cache.addToConnections(connections_key, remote_fd);
+        cache.cache_connections_mutex.unlock();
     }
     
     // Send request to remote server
@@ -190,6 +256,7 @@ void makeRequestConnection(HttpRequest request, int sock_fd)
     char request_string [request.GetTotalLength()];
     request.FormatRequest(request_string);
     if (send(remote_fd, request_string, request.GetTotalLength(), 0) == -1) {
+        if (DEBUG) cout << "Error with send." << endl;
         perror("Send");
         close(remote_fd);
         // Exit?
@@ -202,9 +269,10 @@ void makeRequestConnection(HttpRequest request, int sock_fd)
         perror("Fetch");
     }
     
-    if (DEBUG) cout << "Reponse string:" << response_string << endl;
+    //if (DEBUG) cout << "Reponse string:" << response_string << endl;
     
     // Return response, as-in from remote server, to original client
+    if (DEBUG) cout << "Sending from:" << connections_key << " back to original client." << endl;
     if (send(sock_fd, response_string.c_str(), response_string.size(), 0) == -1) {
         perror("Send");
     }
@@ -212,19 +280,19 @@ void makeRequestConnection(HttpRequest request, int sock_fd)
     /* TODO: Need to add logic to add cache only if specified in header
      */
     
+    // Format response)string into HttpResponse
     HttpResponse response;
     response.ParseResponse(response_string.c_str(), response_string.size());
+    
     string expireTime = response.FindHeader("Expires");
 	string lastMod = response.FindHeader("Last-Modified");
 	string eTag = response.FindHeader("ETag");
     Page thisPage = Page(expireTime, lastMod, eTag, response_string);
     string key = request.GetHost() + "/" + request.GetPath();
     
-    cache.cache_mutex.lock();
-    cache.add(key, thisPage);
-    cache.cache_mutex.unlock();
-    
-    close(remote_fd);
+    cache.cache_store_mutex.lock();
+    cache.addToStore(key, thisPage);
+    cache.cache_store_mutex.unlock();
 }
 
 /*@brief Handles connection for each client thread
@@ -245,8 +313,7 @@ void connectionHandler(int sock_fd)
         for(int i = 0; i < BUFFER_SIZE; i++) buffer[i] = '\0'; //make sure it's empty- not sure if necessary
         
         // Wait for events on the sockets with a half second timeout
-        while((rv = poll(&ufds, 1, 500)) > 0 && recv(sock_fd, buffer, sizeof(buffer), 0) > 0)
-        {
+        while((rv = poll(&ufds, 1, 500)) > 0 && recv(sock_fd, buffer, sizeof(buffer), 0) > 0) {
             temp.append(buffer);
         }
         
@@ -263,31 +330,42 @@ void connectionHandler(int sock_fd)
             request.ParseRequest (temp.c_str(), temp.size());
             
             if (DEBUG) {
-                cout <<"Original \t \t "<<endl<<temp<<endl<<" \t \t Parsed \t"<<endl;
+                cout << "\t \t Original" << endl << temp << endl << endl;
+                cout << " \t \t Parsed" <<endl;
                 cout << "GET " << request.GetHost() << ":" << request.GetPort() << request.GetPath()
                 << " HTTP/" << request.GetVersion() << endl;
                 string header;
                 if((header = request.FindHeader("Connection")).size() > 0)
-                    cout<<"Connection: "<<header<<endl;
+                    cout << "Connection: " << header << endl;
                 if((header = request.FindHeader("User-Agent")).size() > 0)
-                    cout<<"User-Agent: "<<header<<endl;
+                    cout << "User-Agent: " << header << endl;
+                cout << endl;
             }
             
-            /* TODO: implement cache logic
-             */
-            // If request in cache,
+            // Cache logic
             string key = request.GetHost() + "/" + request.GetPath();
-            if (DEBUG) cout << "** Checking if:" << key << " is in cache...." << endl;
-            Page * this_page = cache.get(key);
+            if (DEBUG) cout << "Checking if:" << key << " is in cache..." << endl;
+            
+            // Check cache for request
+            cache.cache_store_mutex.lock();
+            Page * this_page = cache.getFromStore(key);
+            cache.cache_store_mutex.unlock();
+            
+            // If request in cache
             if (this_page) {
-                if (DEBUG) cout << "Request in cache." << endl;
+                if (DEBUG) cout << "Client request in cache." << endl;
+                
+                // Conditional-Get logic
+                
+                
                 // Get from cache and send to client
                 if (send(sock_fd, this_page->getData().c_str(), this_page->getData().size(), 0) == -1) {
                     perror("Send");
                 }
             }
+            // If request not in cache
             else {
-                if (DEBUG) cout << "Calling makeRequestConnection to host:" << request.GetHost() << " port:" << request.GetPort() << endl;
+                if (DEBUG) cout << "Client request not in cache. Calling makeRequestConnection to host:" << request.GetHost() << " port:" << request.GetPort() << endl;
                 
                 // Create new thread to handle proxy->remote server connection
                 boost::thread remote_thread(makeRequestConnection, request, sock_fd);
@@ -308,7 +386,7 @@ void connectionHandler(int sock_fd)
             HttpResponse reply;
             reply.SetVersion("1.1");
             
-            cout<<"Parse exception: "<<e.what()<<endl;
+            cout << "Parse exception: " << e.what() <<endl;
             
             if(strcmp(input, "Request is not GET") == 0) {
                 reply.SetStatusCode("501");
@@ -320,11 +398,11 @@ void connectionHandler(int sock_fd)
             
             char buff[reply.GetTotalLength()];
             reply.FormatResponse(buff);
-            send(sock_fd, buff, reply.GetTotalLength(), 0); //
+            send(sock_fd, buff, reply.GetTotalLength(), 0);
         }
     }
     
-    if (DEBUG) cout << "Closing connection..." << endl;
+    if (DEBUG) cout << "** Closing connection sock_fd:" << sock_fd << endl;
     close(sock_fd);
 }
 
@@ -348,7 +426,8 @@ int main (int argc, char *argv[])
         socklen_t sin_size = sizeof their_addr;
         char s[INET6_ADDRSTRLEN];
         
-        int new_fd = accept(sockfd, (struct sockaddr *)&their_addr, &sin_size);  // New connection
+        // Accept new connection
+        int new_fd = accept(sockfd, (struct sockaddr *)&their_addr, &sin_size);
         if (new_fd < 0) {
             perror("accept");
             continue;
@@ -357,7 +436,7 @@ int main (int argc, char *argv[])
             inet_ntop(their_addr.ss_family, get_in_addr((struct sockaddr *)&their_addr), s, sizeof s);
             if (DEBUG) printf("server: got connection from %s\n", s);
             
-            // Using Boost
+            // Make new Boost thread in group
             if (DEBUG) cout << "Making new thread with boost..." << endl;
             t_group.create_thread(boost::bind(&connectionHandler, new_fd));
         }
