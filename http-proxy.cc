@@ -66,66 +66,110 @@ long cacheParse(string s) { //cache-control: public, private, no cache, no store
 }
 
 // How to implement:
+time_t timeConvert(string s){
+    const char* format = "%a, %d %b %Y %H:%M:%S %Z";
+    struct tm tm;
+    if(strptime(s.c_str(), format, &tm)==NULL){
+    	return 0;
+    }
+    else{
+    	tm.tm_hour = tm.tm_hour-8;//to la time
+    	return mktime(&tm);
+    }
+}
 
-//we may also have to add the locking and unlocking of threads, but since I'm not entirely sure how that works, so I didn't put it in
 
-if (status==200)
+//reply is our http-response
+
+//Adding the page to the cache
+//Taking into account expiretime and cache-control
+
+string status=reply.GetStatusCode();
+
+if (status=="200") // OK status
 {
 	string expireTime = reply.FindHeader("Expires");
 	string cacheCheck = reply.FindHeader("Cache-Control");
 	string eTag = reply.FindHeader("ETag");
 	string date = reply.FindHeader("Date");
 	string lastMod = reply.FindHeader("Last-Modified");
-	//or whatever our HttpResponse file is called now
 
-	time_t current=time(&time);
+	time_t current=time(NULL);
 	time_t expireT;
 
-	if(expireTime!=""){ //page is not in the cache
-	//error check
-		if((expireT=convertTime(expireTime))!=0 && difftime(expireT, current)>0)
-		{
+	if(expireTime!=""){ //page has an expiration time
+		if((expireT=timeConvert(expireTime))!=0 && difftime(expireT, current)>0)
+		{// add to cache with normal expiration time
 			Page pg(expireTime, lastMod, eTag, data);
-			//lock
-			cache.add(URL, pg);
-			//unlock
+			cache.cache_store_mutex.lock();
+			cache.addToStore(URL, pg);
+			cache.cache_store_mutex.unlock();
 		}
-		else{
-			//lock
-			cache.remove(URL);
-			//unlock
+		else{ // expire exists but is not valid
+			cache.cache_store_mutex.lock();
+			cache.removeFromStore(URL, pg);
+			cache.cache_store_mutex.unlock();
 		}
 	}
-	else if (cacheCheck!=""){
-		//long vs int
+	else if (cacheCheck!=""){ // if there is a max-age field
 		long maxT =0;
 		if((maxT=cacheParse(cacheCheck))!=0 && date!="")
-		{
-			expireT = converTime(date)+maxT;
+		{//add to cache using cache-control
+			expireT = converTime(date)+maxT; //implement max-age
 			Page pg(expireT, lastMod, eTag, data);
-			//lock
-			cache.add(URL, pg);
-			//unlock
+			cache.cache_store_mutex.lock();
+			cache.addToStore(URL, pg);
+			cache.cache_store_mutex.unlock();
 		}
 		else
-		{
-			//lock
-			cache.remove(URL);
-			//unlock
+		{// cache not enabled
+			cache.cache_store_mutex.lock();
+			cache.removeFromStore(URL);
+			cache.cache_store_mutex.unlock();
 		}
 	}
 	else{ // no data on cache
-		//lock
-		cache.remove(URL);
-		//unlock
+		cache.cache_store_mutex.lock();
+		cache.removeFromStore(URL);
+		cache.cache_store_mutex.unlock();
 	}
 }
-else if(status== "304"){ 
-        //lock
-        data = cache.get(url)->getData();
-        //unlock
+else if(status== "304"){ // Not-Modified
+        cache.cache_store_mutex.lock();
+        data = cache.getFromStore(url)->getData();
+		cache.cache_store_mutex.unlock();
 }
-*/
+// ********end adding to cache
+
+
+//Conditional GET
+
+string fetchResponse(HttpRequest request)
+{
+	cache.cache_store_mutex.lock();
+	Page* pg = cache.get(url);
+	if(pg!=NULL){ // if page was in cache
+	  if (!pg->isExpired()){ // page in cache and not expired
+		  string a = pg->getData(); // get the data from the cache
+		  cache.cache_store_mutex.unlock();
+		  return a;
+	  }
+	  else{// page is in cache, but expired
+		  if (pg->getETag() != "") { //use the e-tag if available
+			  request.AddHeader("If-None-Match", pg->getETag());
+		  }
+		  else if(pg->getLastModify() !=""){// use last modified version
+			  request.AddHeader("If-Modified-Since", pg->getLastModify());
+		  }
+		  cache.cache_store_mutex.unlock();
+		  return ;// fetch response from server
+	  }
+	}
+	else{
+		cache.cache_store_mutex.unlock();
+		return ; // fetch from the server
+	}
+}*/
 
 
 /*@brief Fetch data from remote host
