@@ -54,7 +54,7 @@ time_t timeConvert(string s){
     }
     else{
         tm.tm_hour = tm.tm_hour-8;//to la time
-        return mktime(&tm);
+        return timegm(&tm);
     }
 }
 
