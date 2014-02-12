@@ -75,115 +75,6 @@ long cacheParse(string s) { //cache-control: public, private, no cache, no store
     return 0;
 }
 
-<<<<<<< HEAD
-=======
-// How to implement:
-time_t timeConvert(string s){
-    const char* format = "%a, %d %b %Y %H:%M:%S %Z";
-    struct tm tm;
-    if(strptime(s.c_str(), format, &tm)==NULL){
-    	return 0;
-    }
-    else{
-    	tm.tm_hour = tm.tm_hour-8;//to la time
-    	return mktime(&tm);
-    }
-}
-
-
-//reply is our http-response
-
-//Adding the page to the cache
-//Taking into account expiretime and cache-control
-
-string status=reply.GetStatusCode();
-
-if (status=="200") // OK status
-{
-	string expireTime = reply.FindHeader("Expires");
-	string cacheCheck = reply.FindHeader("Cache-Control");
-	string eTag = reply.FindHeader("ETag");
-	string date = reply.FindHeader("Date");
-	string lastMod = reply.FindHeader("Last-Modified");
-
-	time_t current=time(NULL);
-	time_t expireT;
-
-	if(expireTime!=""){ //page has an expiration time
-		if((expireT=timeConvert(expireTime))!=0 && difftime(expireT, current)>0)
-		{// add to cache with normal expiration time
-			Page pg(expireTime, lastMod, eTag, data);
-			cache.cache_store_mutex.lock();
-			cache.addToStore(URL, pg);
-			cache.cache_store_mutex.unlock();
-		}
-		else{ // expire exists but is not valid
-			cache.cache_store_mutex.lock();
-			cache.removeFromStore(URL, pg);
-			cache.cache_store_mutex.unlock();
-		}
-	}
-	else if (cacheCheck!=""){ // if there is a max-age field
-		long maxT =0;
-		if((maxT=cacheParse(cacheCheck))!=0 && date!="")
-		{//add to cache using cache-control
-			expireT = converTime(date)+maxT; //implement max-age
-			Page pg(expireT, lastMod, eTag, data);
-			cache.cache_store_mutex.lock();
-			cache.addToStore(URL, pg);
-			cache.cache_store_mutex.unlock();
-		}
-		else
-		{// cache not enabled
-			cache.cache_store_mutex.lock();
-			cache.removeFromStore(URL);
-			cache.cache_store_mutex.unlock();
-		}
-	}
-	else{ // no data on cache
-		cache.cache_store_mutex.lock();
-		cache.removeFromStore(URL);
-		cache.cache_store_mutex.unlock();
-	}
-}
-else if(status== "304"){ // Not-Modified
-        cache.cache_store_mutex.lock();
-        data = cache.getFromStore(url)->getData();
-		cache.cache_store_mutex.unlock();
-}
-// ********end adding to cache
-
-
-//Conditional GET
-
-string fetchResponse(HttpRequest request)
-{
-	cache.cache_store_mutex.lock();
-	Page* pg = cache.get(url);
-	if(pg!=NULL){ // if page was in cache
-	  if (!pg->isExpired()){ // page in cache and not expired
-		  string a = pg->getData(); // get the data from the cache
-		  cache.cache_store_mutex.unlock();
-		  return a;
-	  }
-	  else{// page is in cache, but expired
-		  if (pg->getETag() != "") { //use the e-tag if available
-			  request.AddHeader("If-None-Match", pg->getETag());
-		  }
-		  else if(pg->getLastModify() !=""){// use last modified version
-			  request.AddHeader("If-Modified-Since", pg->getLastModify());
-		  }
-		  cache.cache_store_mutex.unlock();
-		  return ;// fetch response from server
-	  }
-	}
-	else{
-		cache.cache_store_mutex.unlock();
-		return ; // fetch from the server
-	}
-}*/
-
->>>>>>> 12ca6bf9c395b63700f53396a265d8ef67e4f45e
 
 /*@brief Fetch data from remote host
  */
@@ -333,7 +224,7 @@ void makeRequestConnection(HttpRequest request, int sock_fd)
     if (send(sock_fd, response_string.c_str(), response_string.size(), 0) == -1) {
         perror("Send");
     }
- 
+    
     // Format response)string into HttpResponse
     HttpResponse response;
     response.ParseResponse(response_string.c_str(), response_string.size());
@@ -378,7 +269,7 @@ void makeRequestConnection(HttpRequest request, int sock_fd)
                 cache.addToStore(URL, pg);
                 cache.cache_store_mutex.unlock();
                 if (DEBUG) cout << "Max-age field maxT:" << maxT << endl;
-
+                
             }
             else
             {// cache not enabled
@@ -396,24 +287,24 @@ void makeRequestConnection(HttpRequest request, int sock_fd)
     }
     // don't need???
     /*
-    else if(status== "304"){ // Not-Modified
-        cache.cache_store_mutex.lock();
-        string data = cache.getFromStore(URL)->getData();
-        cache.cache_store_mutex.unlock();
-    }
+     else if(status== "304"){ // Not-Modified
+     cache.cache_store_mutex.lock();
+     string data = cache.getFromStore(URL)->getData();
+     cache.cache_store_mutex.unlock();
+     }
      */
     
     /* Old implementation
-    string expireTime = response.FindHeader("Expires");
-	string lastMod = response.FindHeader("Last-Modified");
-	string eTag = response.FindHeader("ETag");
-    Page thisPage = Page(expireTime, lastMod, eTag, response_string);
-    string key = request.GetHost() + "/" + request.GetPath();
-    
-    cache.cache_store_mutex.lock();
-    cache.addToStore(key, thisPage);
-    cache.cache_store_mutex.unlock();
-    */
+     string expireTime = response.FindHeader("Expires");
+     string lastMod = response.FindHeader("Last-Modified");
+     string eTag = response.FindHeader("ETag");
+     Page thisPage = Page(expireTime, lastMod, eTag, response_string);
+     string key = request.GetHost() + "/" + request.GetPath();
+     
+     cache.cache_store_mutex.lock();
+     cache.addToStore(key, thisPage);
+     cache.cache_store_mutex.unlock();
+     */
 }
 
 /*@brief Handles connection for each client thread
@@ -514,7 +405,7 @@ void connectionHandler(int sock_fd)
             // If request not in cache
             else {
                 cache.cache_store_mutex.unlock();
-
+                
                 if (DEBUG) cout << "Client request not in cache. Calling makeRequestConnection to host:" << request.GetHost() << " port:" << request.GetPort() << endl;
                 
                 // Create new thread to handle proxy->remote server connection
