@@ -16,6 +16,7 @@ class bcolors:
     WARNING = '\033[93m'
     FAIL = '\033[91m'
     ENDC = '\033[0m'
+    PASS = '\033[92m'
     
     def disable(self):
         self.HEADER = ''
@@ -24,6 +25,7 @@ class bcolors:
         self.WARNING = ''
         self.FAIL = ''
         self.ENDC = ''
+        self.PASS = ''
 
 class TestHandler(BaseHTTPRequestHandler):
     

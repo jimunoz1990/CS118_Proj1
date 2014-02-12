@@ -32,6 +32,7 @@
 
 using namespace std;
 
+#define DEBUG 1
 #define BUFFER_SIZE 1024
 #define TIMEOUT 100
 
@@ -45,87 +46,34 @@ static Cache cache;
  * 4) Implement conditional GET
  */
 
+time_t timeConvert(string s){
+    const char* format = "%a, %d %b %Y %H:%M:%S %Z";
+    struct tm tm;
+    if(strptime(s.c_str(), format, &tm)==NULL){
+        return 0;
+    }
+    else{
+        tm.tm_hour = tm.tm_hour-8;//to la time
+        return mktime(&tm);
+    }
+}
 
-/* TODO: clear up this code
-// Do some parsing for the cache class
 long cacheParse(string s) { //cache-control: public, private, no cache, no store
     if(s.find("public")!=string::npos || s.find("private")!=string::npos || s.find("no-cache")!=string::npos || s.find("no-store")!=string::npos)
         return 0; //string::npos max value for size_t- could also use -1
-		
+    
     size_t position = string::npos;
     if ((position = s.find("max-age"))!=string::npos) {
         size_t begin = s.find('=');
         if(begin != string::npos){ //long vs int
             long maxAge = atol(s.substr(begin+1).c_str());
-			//debug
-			//cout << "max time: " <<time<< endl;
+            //debug
+            //cout << "max time: " <<time<< endl;
             return maxAge;
         }
     }
     return 0;
 }
-
-// How to implement:
-
-//we may also have to add the locking and unlocking of threads, but since I'm not entirely sure how that works, so I didn't put it in
-
-if (status==200)
-{
-	string expireTime = reply.FindHeader("Expires");
-	string cacheCheck = reply.FindHeader("Cache-Control");
-	string eTag = reply.FindHeader("ETag");
-	string date = reply.FindHeader("Date");
-	string lastMod = reply.FindHeader("Last-Modified");
-	//or whatever our HttpResponse file is called now
-
-	time_t current=time(&time);
-	time_t expireT;
-
-	if(expireTime!=""){ //page is not in the cache
-	//error check
-		if((expireT=convertTime(expireTime))!=0 && difftime(expireT, current)>0)
-		{
-			Page pg(expireTime, lastMod, eTag, data);
-			//lock
-			cache.add(URL, pg);
-			//unlock
-		}
-		else{
-			//lock
-			cache.remove(URL);
-			//unlock
-		}
-	}
-	else if (cacheCheck!=""){
-		//long vs int
-		long maxT =0;
-		if((maxT=cacheParse(cacheCheck))!=0 && date!="")
-		{
-			expireT = converTime(date)+maxT;
-			Page pg(expireT, lastMod, eTag, data);
-			//lock
-			cache.add(URL, pg);
-			//unlock
-		}
-		else
-		{
-			//lock
-			cache.remove(URL);
-			//unlock
-		}
-	}
-	else{ // no data on cache
-		//lock
-		cache.remove(URL);
-		//unlock
-	}
-}
-else if(status== "304"){ 
-        //lock
-        data = cache.get(url)->getData();
-        //unlock
-}
-*/
 
 
 /*@brief Fetch data from remote host
@@ -133,7 +81,7 @@ else if(status== "304"){
 int fetchFromRemoteHost(int sock_fd, string& response)
 {
     if (DEBUG) cout << "In fetchFromRemoteHost..." << endl;
-
+    
     int count = 0;
     char buffer[BUFFER_SIZE];
     int recv_num;
@@ -269,21 +217,84 @@ void makeRequestConnection(HttpRequest request, int sock_fd)
         perror("Fetch");
     }
     
-    //if (DEBUG) cout << "Reponse string:" << response_string << endl;
+    //if (DEBUG) cout << "response string:" << response_string << endl;
     
     // Return response, as-in from remote server, to original client
     if (DEBUG) cout << "Sending from:" << connections_key << " back to original client." << endl;
     if (send(sock_fd, response_string.c_str(), response_string.size(), 0) == -1) {
         perror("Send");
     }
-    
-    /* TODO: Need to add logic to add cache only if specified in header
-     */
-    
+ 
     // Format response)string into HttpResponse
     HttpResponse response;
     response.ParseResponse(response_string.c_str(), response_string.size());
     
+    string URL = request.GetHost() + "/" + request.GetPath();
+    string status = response.GetStatusCode();
+    
+    if (status == "200") // OK status
+    {
+        string expireTime = response.FindHeader("Expires");
+        string cacheCheck = response.FindHeader("Cache-Control");
+        string eTag = response.FindHeader("ETag");
+        string date = response.FindHeader("Date");
+        string lastMod = response.FindHeader("Last-Modified");
+        
+        time_t current=time(NULL);
+        time_t expireT;
+        
+        if(expireTime!=""){ //page has an expiration time
+            if((expireT=timeConvert(expireTime))!=0 && difftime(expireT, current)>0)
+            {// add to cache with normal expiration time
+                if (DEBUG) cout << "Returned page response has expireT:" << expireT << endl;
+                Page pg = Page(timeConvert(expireTime), lastMod, eTag, response_string);
+                cache.cache_store_mutex.lock();
+                cache.addToStore(URL, pg);
+                cache.cache_store_mutex.unlock();
+            }
+            else{ // expire exists but is not valid
+                if (DEBUG) cout << "Expire time is invalid" << endl;
+                cache.cache_store_mutex.lock();
+                cache.removeFromStore(URL);
+                cache.cache_store_mutex.unlock();
+            }
+        }
+        else if (cacheCheck!=""){ // if there is a max-age field
+            long maxT =0;
+            if((maxT=cacheParse(cacheCheck))!=0 && date!="")
+            {//add to cache using cache-control
+                expireT = timeConvert(date)+maxT; //implement max-age
+                Page pg = Page(expireT, lastMod, eTag, response_string);
+                cache.cache_store_mutex.lock();
+                cache.addToStore(URL, pg);
+                cache.cache_store_mutex.unlock();
+                if (DEBUG) cout << "Max-age field maxT:" << maxT << endl;
+
+            }
+            else
+            {// cache not enabled
+                cache.cache_store_mutex.lock();
+                cache.removeFromStore(URL);
+                cache.cache_store_mutex.unlock();
+            }
+        }
+        else{ // no data on cache
+            if (DEBUG) cout << "No expiration date." << endl;
+            cache.cache_store_mutex.lock();
+            cache.removeFromStore(URL);
+            cache.cache_store_mutex.unlock();
+        }
+    }
+    // don't need???
+    /*
+    else if(status== "304"){ // Not-Modified
+        cache.cache_store_mutex.lock();
+        string data = cache.getFromStore(URL)->getData();
+        cache.cache_store_mutex.unlock();
+    }
+     */
+    
+    /* Old implementation
     string expireTime = response.FindHeader("Expires");
 	string lastMod = response.FindHeader("Last-Modified");
 	string eTag = response.FindHeader("ETag");
@@ -293,6 +304,7 @@ void makeRequestConnection(HttpRequest request, int sock_fd)
     cache.cache_store_mutex.lock();
     cache.addToStore(key, thisPage);
     cache.cache_store_mutex.unlock();
+    */
 }
 
 /*@brief Handles connection for each client thread
@@ -308,7 +320,7 @@ void connectionHandler(int sock_fd)
     ufds.events = POLLIN;
     
     while (1) {
-        if (DEBUG) cout << "While looping.." << endl;
+        //if (DEBUG) cout << "While looping.." << endl;
         temp = "";
         for(int i = 0; i < BUFFER_SIZE; i++) buffer[i] = '\0'; //make sure it's empty- not sure if necessary
         
@@ -318,13 +330,13 @@ void connectionHandler(int sock_fd)
         }
         
         HttpRequest request;
-
+        
         if(temp.size() == 0) { // No data => sleep for 1 second then try again
-            if (DEBUG) cout << "(Client thread) Still waiting..." << endl;
+            //if (DEBUG) cout << "(Client thread) Still waiting..." << endl;
             sleep(1);
             continue;
         }
-
+        
         try {
             if (DEBUG) cout << "Trying..." << endl;
             request.ParseRequest (temp.c_str(), temp.size());
@@ -349,22 +361,51 @@ void connectionHandler(int sock_fd)
             // Check cache for request
             cache.cache_store_mutex.lock();
             Page * this_page = cache.getFromStore(key);
-            cache.cache_store_mutex.unlock();
             
             // If request in cache
             if (this_page) {
                 if (DEBUG) cout << "Client request in cache." << endl;
                 
                 // Conditional-Get logic
-                
-                
-                // Get from cache and send to client
-                if (send(sock_fd, this_page->getData().c_str(), this_page->getData().size(), 0) == -1) {
-                    perror("Send");
+                if (!this_page->isExpired()){ // page in cache and not expired
+                    if (DEBUG) cout << "Page in cache and not expired." << endl;
+                    cache.cache_store_mutex.unlock();
+                    // Get from cache and send to client
+                    if (DEBUG) cout << "Sending page from cache back to client" << endl;
+                    if (send(sock_fd, this_page->getData().c_str(), this_page->getData().size(), 0) == -1) {
+                        perror("Send");
+                    }
                 }
+                else {// page is in cache, but expired
+                    if (DEBUG) cout << "Page is in cache but expired." << endl;
+                    if (this_page->getETag() != "") { //use the e-tag if available
+                        request.AddHeader("If-None-Match", this_page->getETag());
+                    }
+                    else if(this_page->getLastModify() !=""){// use last modified version
+                        request.AddHeader("If-Modified-Since", this_page->getLastModify());
+                    }
+                    cache.cache_store_mutex.unlock();
+                    // TODO: Fetch response from server
+                    
+                    // Create new thread to handle proxy->remote server connection
+                    boost::thread remote_thread(makeRequestConnection, request, sock_fd);
+                    if (DEBUG) cout << "Waiting for remote thread..." << endl;
+                    // Wait for remote thread to exit
+                    remote_thread.join();
+                    
+                    // Close connection to remote server
+                    if(strcmp(request.FindHeader("Connection").c_str(), "close") == 0 ||
+                       strcmp(request.GetVersion().c_str(), "1.0") == 0)
+                        break; // If the connection is not persisent => close
+                    
+                    if (DEBUG) cout << "Done processing..." << endl;
+                }
+                
             }
             // If request not in cache
             else {
+                cache.cache_store_mutex.unlock();
+
                 if (DEBUG) cout << "Client request not in cache. Calling makeRequestConnection to host:" << request.GetHost() << " port:" << request.GetPort() << endl;
                 
                 // Create new thread to handle proxy->remote server connection
@@ -441,7 +482,7 @@ int main (int argc, char *argv[])
             t_group.create_thread(boost::bind(&connectionHandler, new_fd));
         }
     }
-
+    
     close(sockfd);
     return 0;
 }

@@ -34,8 +34,8 @@
 #include <boost/thread.hpp>
 #include <boost/bind.hpp>
 
-Page::Page(string expTime, string lastMod, string entityTag, string dat){
-    expireTime = timeConversion(expTime);
+Page::Page(time_t expTime, string lastMod, string entityTag, string dat){
+    expireTime = expTime;
     eTag = entityTag;
     lastModify = lastMod;
     data = dat;
@@ -67,16 +67,4 @@ bool Page::isExpired(){
         return true;
     else
         return false;
-}
-
-time_t Page::timeConversion(string s){
-    const char* format = "%a, %d %b %Y %H:%M:%S %Z";
-    struct tm tm;
-    if(strptime(s.c_str(), format, &tm)==NULL){
-    	return 0;
-    }
-    else{
-    	tm.tm_hour = tm.tm_hour-8;//to la time
-    	return mktime(&tm);
-    }
 }

@@ -23,7 +23,7 @@ private:
     string data;
     
 public:
-    Page(string expTime, string lastMod, string entityTag, string dat);
+    Page(time_t expTime, string lastMod, string entityTag, string dat);
     
     string getLastModify();
     
@@ -35,7 +35,6 @@ public:
     
     bool isExpired();
     
-    time_t timeConversion(string s);
 };
 
 #endif /* defined(____http_page__) */
