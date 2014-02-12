@@ -117,6 +117,7 @@ try:
     conn.close()
     
     time.sleep(3)
+    print "CONNECTION 2"
     conn2 = HTTPConnection(proxy)
     conn2.request("GET", "http://127.0.0.1:" + sport1 + "/basic")
     resp2 = conn2.getresponse()
@@ -124,6 +125,7 @@ try:
     conn2.close()
     
     time.sleep(3)
+    print "CONNECTION 3"
     conn3 = HTTPConnection(proxy)
     conn3.request("GET", "http://127.0.0.1:" + sport1 + "/basic")
     resp3 = conn3.getresponse()
@@ -131,11 +133,19 @@ try:
     conn3.close()
     
     time.sleep(6)
+    print "CONNECTION 4"
     conn4 = HTTPConnection(proxy)
     conn4.request("GET", "http://127.0.0.1:" + sport1 + "/basic")
     resp4 = conn4.getresponse()
     data4 = resp4.read()
     conn4.close()
+    
+    
+    print "-------------"
+    print "data4:", data4
+    print "data3:", data3
+    print "data2:", data2
+    print "-------------"
     
     
     if data4 == "OK" and data3 == cdata and data2 == cdata:

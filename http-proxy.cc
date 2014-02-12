@@ -40,10 +40,10 @@ static Cache cache;
 
 
 /* TODO List:
- * 1) Add logic to cache unless specified not to in response header
+ * 1) DONE, JM Add logic to cache unless specified not to in response header
  * 2) DONE, SK (Add additional cache to keep track of proxy->remote server connection)
  * 3) DONE, SK (Implement proxy->remote server connection caching)
- * 4) Implement conditional GET
+ * 4) DONE, JM Implement conditional GET
  */
 
 time_t timeConvert(string s){
@@ -218,19 +218,28 @@ void makeRequestConnection(HttpRequest request, int sock_fd)
     }
     
     //if (DEBUG) cout << "response string:" << response_string << endl;
-    
-    // Return response, as-in from remote server, to original client
-    if (DEBUG) cout << "Sending from:" << connections_key << " back to original client." << endl;
-    if (send(sock_fd, response_string.c_str(), response_string.size(), 0) == -1) {
-        perror("Send");
-    }
-    
+
     // Format response)string into HttpResponse
     HttpResponse response;
     response.ParseResponse(response_string.c_str(), response_string.size());
     
     string URL = request.GetHost() + "/" + request.GetPath();
     string status = response.GetStatusCode();
+    
+    if (status == "304") {
+        if (DEBUG) cout << "HTTP:304 back from remote server, get data from cache and return to client." << endl;
+        string cache_data = cache.getFromStore(URL)->getData();
+        if (send(sock_fd, cache_data.c_str(), cache_data.size(), 0) == -1) {
+            perror("Send");
+        }
+    }
+    // Else return response, as-in from remote server, to original client
+    else {
+        if (DEBUG) cout << "Sending from:" << connections_key << " back to original client." << endl;
+        if (send(sock_fd, response_string.c_str(), response_string.size(), 0) == -1) {
+            perror("Send");
+        }
+    }
     
     if (status == "200") // OK status
     {
@@ -243,8 +252,9 @@ void makeRequestConnection(HttpRequest request, int sock_fd)
         time_t current=time(NULL);
         time_t expireT;
         
-        if(expireTime!=""){ //page has an expiration time
-            if((expireT=timeConvert(expireTime))!=0 && difftime(expireT, current)>0)
+         // Page has an expiration time
+        if (expireTime != "") {
+            if((expireT=timeConvert(expireTime))!=0 && difftime(expireT, current) > 0)
             {// add to cache with normal expiration time
                 if (DEBUG) cout << "Returned page response has expireT:" << expireT << endl;
                 Page pg = Page(timeConvert(expireTime), lastMod, eTag, response_string);
@@ -285,26 +295,14 @@ void makeRequestConnection(HttpRequest request, int sock_fd)
             cache.cache_store_mutex.unlock();
         }
     }
-    // don't need???
-    /*
-     else if(status== "304"){ // Not-Modified
-     cache.cache_store_mutex.lock();
-     string data = cache.getFromStore(URL)->getData();
-     cache.cache_store_mutex.unlock();
-     }
-     */
-    
-    /* Old implementation
-     string expireTime = response.FindHeader("Expires");
-     string lastMod = response.FindHeader("Last-Modified");
-     string eTag = response.FindHeader("ETag");
-     Page thisPage = Page(expireTime, lastMod, eTag, response_string);
-     string key = request.GetHost() + "/" + request.GetPath();
-     
-     cache.cache_store_mutex.lock();
-     cache.addToStore(key, thisPage);
-     cache.cache_store_mutex.unlock();
-     */
+    // Not-Modified
+    else if (status== "304"){
+        /*
+        cache.cache_store_mutex.lock();
+        string data = cache.getFromStore(URL)->getData();
+        cache.cache_store_mutex.unlock();
+        */
+    }
 }
 
 /*@brief Handles connection for each client thread
@@ -367,7 +365,9 @@ void connectionHandler(int sock_fd)
                 if (DEBUG) cout << "Client request in cache." << endl;
                 
                 // Conditional-Get logic
-                if (!this_page->isExpired()){ // page in cache and not expired
+                
+                // Page is in the cache and not expired
+                if (!this_page->isExpired()) {
                     if (DEBUG) cout << "Page in cache and not expired." << endl;
                     cache.cache_store_mutex.unlock();
                     // Get from cache and send to client
@@ -376,7 +376,8 @@ void connectionHandler(int sock_fd)
                         perror("Send");
                     }
                 }
-                else {// page is in cache, but expired
+                // Page is in cache but expired
+                else {
                     if (DEBUG) cout << "Page is in cache but expired." << endl;
                     if (this_page->getETag() != "") { //use the e-tag if available
                         request.AddHeader("If-None-Match", this_page->getETag());
@@ -385,7 +386,6 @@ void connectionHandler(int sock_fd)
                         request.AddHeader("If-Modified-Since", this_page->getLastModify());
                     }
                     cache.cache_store_mutex.unlock();
-                    // TODO: Fetch response from server
                     
                     // Create new thread to handle proxy->remote server connection
                     boost::thread remote_thread(makeRequestConnection, request, sock_fd);
