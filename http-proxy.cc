@@ -48,12 +48,12 @@ static Cache cache;
 
 time_t timeConvert(string s){
     const char* format = "%a, %d %b %Y %H:%M:%S %Z";
-    struct tm tm;
+    struct tm tm = {0};
     if(strptime(s.c_str(), format, &tm)==NULL){
         return 0;
     }
     else{
-        tm.tm_hour = tm.tm_hour-8;//to la time
+        tm.tm_hour = tm.tm_hour-8; //to LA time
         return mktime(&tm);
     }
 }
@@ -241,6 +241,7 @@ void makeRequestConnection(HttpRequest request, int sock_fd)
         }
     }
     
+    // Caching logic
     if (status == "200") // OK status
     {
         string expireTime = response.FindHeader("Expires");
@@ -256,20 +257,20 @@ void makeRequestConnection(HttpRequest request, int sock_fd)
         if (expireTime != "") {
             if((expireT=timeConvert(expireTime))!=0 && difftime(expireT, current) > 0)
             {// add to cache with normal expiration time
-                if (DEBUG) cout << "Returned page response has expireT:" << expireT << endl;
+                if (DEBUG) cout << "Returned page response has expireT:" << expireT << " current:" << current << endl;
                 Page pg = Page(timeConvert(expireTime), lastMod, eTag, response_string);
                 cache.cache_store_mutex.lock();
                 cache.addToStore(URL, pg);
                 cache.cache_store_mutex.unlock();
             }
             else{ // expire exists but is not valid
-                if (DEBUG) cout << "Expire time is invalid" << endl;
+                if (DEBUG) cout << "Expire time is invalid, expireT:" << expireT << " current:" << current << endl;
                 cache.cache_store_mutex.lock();
                 cache.removeFromStore(URL);
                 cache.cache_store_mutex.unlock();
             }
         }
-        else if (cacheCheck!=""){ // if there is a max-age field
+        else if (cacheCheck != "") { // if there is a max-age field
             long maxT =0;
             if((maxT=cacheParse(cacheCheck))!=0 && date!="")
             {//add to cache using cache-control
@@ -283,6 +284,7 @@ void makeRequestConnection(HttpRequest request, int sock_fd)
             }
             else
             {// cache not enabled
+                if (DEBUG) cout << "Cache not enabled" << endl;
                 cache.cache_store_mutex.lock();
                 cache.removeFromStore(URL);
                 cache.cache_store_mutex.unlock();
