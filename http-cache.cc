@@ -36,9 +36,7 @@
 
 using namespace std;
 
-Cache::Cache() {
-    num_connections = 0;
-}
+#define MAX_SERVER_CONNECTIONS 100
 
 /* Cache store functions
  */
@@ -63,7 +61,25 @@ void Cache::addToStore(string URL, Page webpg) {
 /* Cache connections functions 
  */
 void Cache::addToConnections(string URL, int sock_fd) {
-    connections.insert(map<string, int>::value_type(URL, sock_fd));
+    // Check if there is space for a new entry
+    if (connections.size() < 100) {
+        connections.insert(map<string, int>::value_type(URL, sock_fd));
+        
+        // Add corresponding entry to cache connections_age
+        time_t cur_time = time(NULL);
+        connections_age.insert(map<string, int>::value_type(URL, cur_time));
+        
+    }
+    else {
+        // Cache replacement policy
+        cacheReplacementPolicy();
+        connections.insert(map<string, int>::value_type(URL, sock_fd));
+        
+        // Add corresponding entry to cache connections_age
+        time_t cur_time = time(NULL);
+        connections_age.insert(map<string, int>::value_type(URL, cur_time));
+        
+    }
 }
 
 int Cache::getFromConnections(string URL) {
@@ -71,10 +87,38 @@ int Cache::getFromConnections(string URL) {
     iter = connections.find(URL);
     if (iter == connections.end())
         return -1;
-    else
+    else {
+        connections_age.erase(URL);
+        // Update time for connection
+        time_t cur_time = time(NULL);
+        connections_age.insert(map<string, time_t>::value_type(URL, cur_time));
         return iter->second;
+    }
 }
 
 void Cache::removeFromConnections(string URL) {
     connections.erase(URL);
+    connections_age.erase(URL);
 }
+
+void Cache::cacheReplacementPolicy() {
+    if (DEBUG) cout << "In cacheReplacementPolicy..." << endl;
+    
+    map<string, time_t>::iterator iter;
+    time_t oldest = time(NULL);
+    string oldest_key = "";
+    
+    // Find the oldest connection socket
+    for (iter = connections_age.begin(); iter != connections_age.end(); iter++) {
+        if (iter->second < oldest) {
+            oldest = iter->second;
+            oldest_key = iter->first;
+        }
+    }
+    
+    int sock_fd = getFromConnections(oldest_key);
+    close(sock_fd);
+    removeFromConnections(oldest_key);
+    connections_age.erase(oldest_key);
+}
+

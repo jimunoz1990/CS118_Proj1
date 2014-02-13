@@ -60,15 +60,15 @@ time_t timeConvert(string s){
 }
 
 long cacheParse(string s) { //cache-control: public, private, no cache, no store
-    if(s.find("public")!=string::npos || s.find("private")!=string::npos || s.find("no-cache")!=string::npos || s.find("no-store")!=string::npos)
+    if(s.find("public") != string::npos || s.find("private") != string::npos || s.find("no-cache") != string::npos || s.find("no-store") != string::npos)
         return 0; //string::npos max value for size_t- could also use -1
     
     size_t position = string::npos;
-    if ((position = s.find("max-age"))!=string::npos) {
+    if ((position = s.find("max-age")) != string::npos) {
         size_t begin = s.find('=');
         if(begin != string::npos){ //long vs int
             long maxAge = atol(s.substr(begin+1).c_str());
-            if (DEBUG) cout << "max time: " << time << endl;
+            //if (DEBUG) cout << "max time: " << time << endl;
             return maxAge;
         }
     }
@@ -146,12 +146,13 @@ void makeRequestConnection(HttpRequest request, int sock_fd)
     // If proxy->remote-server connection exits
     if (proxy_server_sock_fd > 0) {
         if (DEBUG) cout << "Previous connection exists, sock_fd:" << proxy_server_sock_fd << endl;
-        // Check if connection is still alive
         
         int poll_status;
         struct pollfd ufds;
         ufds.fd = proxy_server_sock_fd;
         ufds.events = POLLRDHUP;
+        
+        // Check if connection is still alive
         if ((poll_status = poll(&ufds, 1, 0)) == 0) {
             if (DEBUG) cout << "Connection alive" << endl;
             remote_fd = proxy_server_sock_fd;

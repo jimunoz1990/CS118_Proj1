@@ -10,6 +10,7 @@
 #include <iostream>
 #include <string>
 #include <string.h>
+#include <time.h>
 
 #include "http-page.h"
 
@@ -32,13 +33,12 @@ private:
      */
     map<string, int> connections;
     
-    /*@brief Number of connection in connections cache
+    /*@brief Caches
+     *       Key: connection sock_fd, Value: time_t when last used
      */
-    int num_connections;
+    map<string, time_t> connections_age;
 	
 public:
-    Cache::Cache();
-    
     /*@brief Get value from cache store
      */
     Page* getFromStore(string URL);
@@ -59,9 +59,13 @@ public:
      */
     int getFromConnections(string URL);
     
-    /*@brief Rremove from cache connections
+    /*@brief Remove from cache connections and corresponding entry in connections_age
      */
     void removeFromConnections(string URL);
+    
+    /*@brief Cache connections replacement policy
+     */
+    void cacheReplacementPolicy();
      
     boost::mutex cache_store_mutex;
     boost::mutex cache_connections_mutex;
