@@ -34,7 +34,6 @@ using namespace std;
 
 #define DEBUG 1
 #define BUFFER_SIZE 1024
-#define TIMEOUT 100
 
 static Cache cache;
 
@@ -43,8 +42,9 @@ static Cache cache;
  * 2) DONE, SK (Add additional cache to keep track of proxy->remote server connection)
  * 3) DONE, SK (Implement proxy->remote server connection caching)
  * 4) DONE, JM Implement conditional GET
- * 5) Limit proxy->server connections to 100
+ * 5) DONE, SK Limit proxy->server connections to 100
  * 6) Review error logic (close corresponding socket or not)
+ * 7) Timeout for proxy->server threads
  */
 
 time_t timeConvert(string s){
@@ -442,6 +442,9 @@ void connectionHandler(int sock_fd)
     close(sock_fd);
 }
 
+void cacheCleanupHandler() {
+    cache.cacheConnectionCleanup();
+}
 
 int main (int argc, char *argv[])
 {
@@ -453,8 +456,9 @@ int main (int argc, char *argv[])
     }
     cout << "Proxy server: waiting for connections..." << endl;
     
-    // Create Boost
+    // Create Boost thread group
     boost::thread_group t_group;
+    t_group.create_thread(&cacheCleanupHandler);
     
     // Accept incoming connections
     while (1) {

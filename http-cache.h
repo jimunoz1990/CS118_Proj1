@@ -66,6 +66,10 @@ public:
     /*@brief Cache connections replacement policy
      */
     void cacheReplacementPolicy();
+    
+    /*@brief Cache cleanup
+     */
+    void cacheConnectionCleanup();
      
     boost::mutex cache_store_mutex;
     boost::mutex cache_connections_mutex;

@@ -37,6 +37,7 @@
 using namespace std;
 
 #define MAX_SERVER_CONNECTIONS 100
+#define CONNECTION_TIMEOUT 30
 
 /* Cache store functions
  */
@@ -119,6 +120,38 @@ void Cache::cacheReplacementPolicy() {
     int sock_fd = getFromConnections(oldest_key);
     close(sock_fd);
     removeFromConnections(oldest_key);
-    connections_age.erase(oldest_key);
 }
 
+void Cache::cacheConnectionCleanup() {
+    if (DEBUG) cout << "In cacheConnectionCleanup()..." << endl;
+    int sock_fd = 0;
+    string key = "";
+    while (1) {
+        cache_connections_mutex.lock();
+        
+        if (DEBUG) {
+            cout << "Cache (connections) size:" << connections.size() << endl;
+            cout << "Cache (connections_age) size:" << connections_age.size() << endl;
+        }
+        
+        time_t cur_time = time(NULL);
+        map<string, time_t>::iterator iter;
+        for (iter = connections_age.begin(); iter != connections_age.end(); iter++) {
+            if (iter->second + CONNECTION_TIMEOUT < cur_time) {
+                key = iter->first;
+                sock_fd = getFromConnections(iter->first);
+                close(sock_fd);
+                removeFromConnections(key);
+                if (DEBUG) cout << "Closed socket:" << sock_fd << endl;
+            }
+        }
+        cache_connections_mutex.unlock();
+        if (DEBUG) {
+            cout << "Cache (connections) size:" << connections.size() << endl;
+            cout << "Cache (connections_age) size:" << connections_age.size() << endl;
+            cout << "Sleeping..." << endl;
+        }
+        cache_connections_mutex.unlock();
+        sleep(CONNECTION_TIMEOUT);
+    }
+}
