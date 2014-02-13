@@ -38,18 +38,19 @@ using namespace std;
 
 static Cache cache;
 
-
 /* TODO List:
  * 1) DONE, JM Add logic to cache unless specified not to in response header
  * 2) DONE, SK (Add additional cache to keep track of proxy->remote server connection)
  * 3) DONE, SK (Implement proxy->remote server connection caching)
  * 4) DONE, JM Implement conditional GET
+ * 5) Limit proxy->server connections to 100
+ * 6) Review error logic (close corresponding socket or not)
  */
 
 time_t timeConvert(string s){
     const char* format = "%a, %d %b %Y %H:%M:%S %Z";
     struct tm tm = {0};
-    if(strptime(s.c_str(), format, &tm)==NULL){
+    if(strptime(s.c_str(), format, &tm) == NULL){
         return 0;
     }
     else{
@@ -67,14 +68,12 @@ long cacheParse(string s) { //cache-control: public, private, no cache, no store
         size_t begin = s.find('=');
         if(begin != string::npos){ //long vs int
             long maxAge = atol(s.substr(begin+1).c_str());
-            //debug
-            //cout << "max time: " <<time<< endl;
+            if (DEBUG) cout << "max time: " << time << endl;
             return maxAge;
         }
     }
     return 0;
 }
-
 
 /*@brief Fetch data from remote host
  */
@@ -92,7 +91,6 @@ int fetchFromRemoteHost(int sock_fd, string& response)
     
     while (1) {
         if (DEBUG) cout << "Receive attempt:" << count << endl;
-        
         while (poll(&ufds, 1, TIMEOUT) > 0) {
             recv_num = recv(sock_fd, buffer, sizeof(buffer), 0);
             if (DEBUG) cout << "Recv_num:" << recv_num << endl;
@@ -217,8 +215,6 @@ void makeRequestConnection(HttpRequest request, int sock_fd)
         perror("Fetch");
     }
     
-    //if (DEBUG) cout << "response string:" << response_string << endl;
-
     // Format response)string into HttpResponse
     HttpResponse response;
     response.ParseResponse(response_string.c_str(), response_string.size());
@@ -253,7 +249,7 @@ void makeRequestConnection(HttpRequest request, int sock_fd)
         time_t current=time(NULL);
         time_t expireT;
         
-         // Page has an expiration time
+        // Page has an expiration time
         if (expireTime != "") {
             if((expireT=timeConvert(expireTime))!=0 && difftime(expireT, current) > 0)
             {// add to cache with normal expiration time
@@ -300,10 +296,10 @@ void makeRequestConnection(HttpRequest request, int sock_fd)
     // Not-Modified
     else if (status== "304"){
         /*
-        cache.cache_store_mutex.lock();
-        string data = cache.getFromStore(URL)->getData();
-        cache.cache_store_mutex.unlock();
-        */
+         cache.cache_store_mutex.lock();
+         string data = cache.getFromStore(URL)->getData();
+         cache.cache_store_mutex.unlock();
+         */
     }
 }
 
@@ -394,15 +390,7 @@ void connectionHandler(int sock_fd)
                     if (DEBUG) cout << "Waiting for remote thread..." << endl;
                     // Wait for remote thread to exit
                     remote_thread.join();
-                    
-                    // Close connection to remote server
-                    if(strcmp(request.FindHeader("Connection").c_str(), "close") == 0 ||
-                       strcmp(request.GetVersion().c_str(), "1.0") == 0)
-                        break; // If the connection is not persisent => close
-                    
-                    if (DEBUG) cout << "Done processing..." << endl;
                 }
-                
             }
             // If request not in cache
             else {
@@ -420,9 +408,12 @@ void connectionHandler(int sock_fd)
                 if(strcmp(request.FindHeader("Connection").c_str(), "close") == 0 ||
                    strcmp(request.GetVersion().c_str(), "1.0") == 0)
                     break; // If the connection is not persisent => close
-                
-                if (DEBUG) cout << "Done processing..." << endl;
             }
+            
+            // If the connection is not persisent, close connection to remote server
+            if(strcmp(request.FindHeader("Connection").c_str(), "close") == 0 ||
+               strcmp(request.GetVersion().c_str(), "1.0") == 0)
+                break;
         }
         catch (ParseException e) {
             const char* input = e.what(); //returns msg.c_str()
@@ -443,19 +434,20 @@ void connectionHandler(int sock_fd)
             reply.FormatResponse(buff);
             send(sock_fd, buff, reply.GetTotalLength(), 0);
         }
+        if (DEBUG) cout << "Done processing..." << endl;
     }
     
-    if (DEBUG) cout << "** Closing connection sock_fd:" << sock_fd << endl;
+    if (DEBUG) cout << "* Closing connection sock_fd:" << sock_fd << endl;
     close(sock_fd);
 }
 
 
 int main (int argc, char *argv[])
 {
-    // Create server listener
+    // Create proxy server
     int sockfd;
     if ((sockfd = makeServerConnection(PROXY_PORT)) < 0) {
-        fprintf(stderr, "fail to make server\n");
+        perror("Proxy server");
         return 1;
     }
     cout << "Proxy server: waiting for connections..." << endl;
@@ -465,14 +457,16 @@ int main (int argc, char *argv[])
     
     // Accept incoming connections
     while (1) {
-        struct sockaddr_storage their_addr; // Connector's address info
+        // Connector's address info
+        struct sockaddr_storage their_addr;
         socklen_t sin_size = sizeof their_addr;
         char s[INET6_ADDRSTRLEN];
         
         // Accept new connection
         int new_fd = accept(sockfd, (struct sockaddr *)&their_addr, &sin_size);
+        
         if (new_fd < 0) {
-            perror("accept");
+            perror("Accept");
             continue;
         }
         else {
@@ -484,7 +478,10 @@ int main (int argc, char *argv[])
             t_group.create_thread(boost::bind(&connectionHandler, new_fd));
         }
     }
+    t_group.join_all();
     
+    cout << "Proxy server shutting down." << endl;
     close(sockfd);
+    
     return 0;
 }

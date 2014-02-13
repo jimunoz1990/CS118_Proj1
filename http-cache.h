@@ -31,8 +31,14 @@ private:
      *       Key: URL, Value: connection sock_fd
      */
     map<string, int> connections;
+    
+    /*@brief Number of connection in connections cache
+     */
+    int num_connections;
 	
 public:
+    Cache::Cache();
+    
     /*@brief Get value from cache store
      */
     Page* getFromStore(string URL);

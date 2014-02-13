@@ -36,6 +36,10 @@
 
 using namespace std;
 
+Cache::Cache() {
+    num_connections = 0;
+}
+
 /* Cache store functions
  */
 Page* Cache::getFromStore(string URL) {
