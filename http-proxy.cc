@@ -34,6 +34,7 @@ using namespace std;
 
 #define DEBUG 1
 #define BUFFER_SIZE 1024
+#define TIMEOUT 100
 
 static Cache cache;
 
