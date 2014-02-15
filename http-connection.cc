@@ -93,9 +93,7 @@ int makeServerConnection(const char *port)
     return sockfd;
 }
 
-/* @brief Makes client
- * Used Beej's guide as reference
- */
+
 int makeClientConnection(const char *host, const char *port)
 {
     if (DEBUG) cout << "Making client connection to host:" << host << " port:" << port << endl;
@@ -136,7 +134,6 @@ int makeClientConnection(const char *host, const char *port)
     }
     
     inet_ntop(p->ai_family, get_in_addr((struct sockaddr *)p->ai_addr), s, sizeof s);
-    
     freeaddrinfo(servinfo);         // Clean up struct
     if (DEBUG) cout << "Client: connected to " << s << " on sock_fd:" << sockfd << endl;
     return sockfd;

@@ -18,11 +18,14 @@ void *get_in_addr(struct sockaddr *sa);
 
 /*@brief Starts the proxy server. Contains all the socket calls.
  * Used Beej Guide To Network Programming as reference
+ *@param port [in] Port number to make proxy server on
  */
 int makeServerConnection(const char *port);
 
 /*@brief Starts an instance of a client connection. Contains all the socket calls.
  * Used Beej Guide To Network Programming as reference
+ *@parem host [in] Host to connect to
+ *       port [in] Port number to make client on
  */
 int makeClientConnection(const char *host, const char *port);
 

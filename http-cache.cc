@@ -65,7 +65,7 @@ void Cache::addToStore(string URL, Page webpg) {
  **************************************/
 void Cache::addToConnections(string URL, int sock_fd) {
     // Check if there is space for a new entry
-    if (connections.size() < 100) {
+    if (connections.size() < MAX_SERVER_CONNECTIONS) {
         connections.insert(map<string, int>::value_type(URL, sock_fd));
         
         // Add corresponding entry to cache connections_age

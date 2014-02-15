@@ -14,6 +14,9 @@
 
 using namespace std;
 
+/*@brief Page is used to store the data returned from remote-server.
+ * It is used in conjunction with the Cache class.
+ */
 class Page{
     
 private:

@@ -77,9 +77,8 @@ public:
     void cacheReplacementPolicy();
     
     /*@brief Cache connection cleanup
-     * Periodically checks proxy->remote-server connections. If the connection's
-     * time-since-last-used surpasses CONNECTION_TIMEOUT (120 seconds), then the connection
-     * will be closed.
+     * Checks proxy->remote-server connections. If the connection's time-since-last-used 
+     * surpasses CONNECTION_TIMEOUT (120 seconds), then the connection will be closed.
      */
     void cacheConnectionCleanup();
     
@@ -92,15 +91,17 @@ public:
     void removeFromClients(int sock_fd);
     
     /*@brief Cache client cleanup
+     * Checks client->proxy connections. If the connection's time-since-last-active
+     * surpasses CONNECTION_TIMEOUT (120 seconds), then the connection will be closed.
      */
     void cacheClientCleanup();
     
-    /*@brief Mutex locks for cache store and cache connections/connections age
+    /*@brief Mutex locks for cache store, cache connections/connections age, and cache clients
      */
     boost::mutex cache_store_mutex;
     boost::mutex cache_connections_mutex;
     boost::mutex cache_clients_mutex;
     
-}; //cache; // declare cache as a Cache object
+};
 
 #endif /* defined(____http_cache__) */
