@@ -35,6 +35,7 @@ using namespace std;
 #define DEBUG 1
 #define BUFFER_SIZE 1024
 #define TIMEOUT 100
+#define CONNECTION_TIMEOUT 30
 
 static Cache cache;
 
@@ -48,6 +49,8 @@ static Cache cache;
  * 7) Timeout for proxy->server threads
  */
 
+/*@brief Converts a time from string format to time_t
+ */
 time_t timeConvert(string s){
     const char* format = "%a, %d %b %Y %H:%M:%S %Z";
     struct tm tm = {0};
@@ -55,19 +58,21 @@ time_t timeConvert(string s){
         return 0;
     }
     else{
-        tm.tm_hour = tm.tm_hour-8; //to LA time
+        tm.tm_hour = tm.tm_hour-8; // To LA time
         return mktime(&tm);
     }
 }
 
+/*@brief 
+ */
 long cacheParse(string s) { //cache-control: public, private, no cache, no store
     if(s.find("public") != string::npos || s.find("private") != string::npos || s.find("no-cache") != string::npos || s.find("no-store") != string::npos)
-        return 0; //string::npos max value for size_t- could also use -1
+        return 0; // string::npos max value for size_t- could also use -1
     
     size_t position = string::npos;
     if ((position = s.find("max-age")) != string::npos) {
         size_t begin = s.find('=');
-        if(begin != string::npos){ //long vs int
+        if(begin != string::npos) { // Long vs int
             long maxAge = atol(s.substr(begin+1).c_str());
             //if (DEBUG) cout << "max time: " << time << endl;
             return maxAge;
@@ -77,6 +82,9 @@ long cacheParse(string s) { //cache-control: public, private, no cache, no store
 }
 
 /*@brief Fetch data from remote host
+ *@param sock_fd [in] Socket of the proxy->remote-server connection
+         string [out] Response from the remote-server
+ *@returns 1 on success and -1 on failure
  */
 int fetchFromRemoteHost(int sock_fd, string& response)
 {
@@ -306,6 +314,7 @@ void makeRequestConnection(HttpRequest request, int sock_fd)
 }
 
 /*@brief Handles connection for each client thread
+ *@params sock_fd [in] Socket for the client->proxy connection
  */
 void connectionHandler(int sock_fd)
 {
@@ -317,23 +326,28 @@ void connectionHandler(int sock_fd)
     ufds.fd = sock_fd; // Open socket # corresponding to the connection
     ufds.events = POLLIN;
     
+    // Accept client requests
     while (1) {
-        //if (DEBUG) cout << "While looping.." << endl;
         temp = "";
-        for(int i = 0; i < BUFFER_SIZE; i++) buffer[i] = '\0'; //make sure it's empty- not sure if necessary
+        for(int i = 0; i < BUFFER_SIZE; i++) buffer[i] = '\0';
         
-        // Wait for events on the sockets with a half second timeout
+        // Wait for events on the socket with a half second timeout
         while((rv = poll(&ufds, 1, 500)) > 0 && recv(sock_fd, buffer, sizeof(buffer), 0) > 0) {
             temp.append(buffer);
         }
         
         HttpRequest request;
         
-        if(temp.size() == 0) { // No data => sleep for 1 second then try again
-            //if (DEBUG) cout << "(Client thread) Still waiting..." << endl;
+        // If there is no data, sleep for 1 sec and try again
+        if(temp.size() == 0) {
             sleep(1);
             continue;
         }
+        
+        // Update client connection last-active-time upon reciving a request
+        cache.cache_clients_mutex.lock();
+        cache.addToClients(sock_fd);
+        cache.cache_clients_mutex.unlock();
         
         try {
             if (DEBUG) cout << "Trying..." << endl;
@@ -352,37 +366,35 @@ void connectionHandler(int sock_fd)
                 cout << endl;
             }
             
-            // Cache logic
             string key = request.GetHost() + "/" + request.GetPath();
             if (DEBUG) cout << "Checking if:" << key << " is in cache..." << endl;
-            
+
             // Check cache for request
             cache.cache_store_mutex.lock();
             Page * this_page = cache.getFromStore(key);
             
-            // If request in cache
+            // If request is in cache
             if (this_page) {
                 if (DEBUG) cout << "Client request in cache." << endl;
                 
-                // Conditional-Get logic
-                
-                // Page is in the cache and not expired
+                // Conditional-GET logic
+                // If page is in the cache and not expired
                 if (!this_page->isExpired()) {
                     if (DEBUG) cout << "Page in cache and not expired." << endl;
                     cache.cache_store_mutex.unlock();
-                    // Get from cache and send to client
+                    // Get page from cache and send to client
                     if (DEBUG) cout << "Sending page from cache back to client" << endl;
                     if (send(sock_fd, this_page->getData().c_str(), this_page->getData().size(), 0) == -1) {
                         perror("Send");
                     }
                 }
-                // Page is in cache but expired
+                // Page is in cache, but expired
                 else {
                     if (DEBUG) cout << "Page is in cache but expired." << endl;
                     if (this_page->getETag() != "") { //use the e-tag if available
                         request.AddHeader("If-None-Match", this_page->getETag());
                     }
-                    else if(this_page->getLastModify() !=""){// use last modified version
+                    else if (this_page->getLastModify() != "") { // use last modified version
                         request.AddHeader("If-Modified-Since", this_page->getLastModify());
                     }
                     cache.cache_store_mutex.unlock();
@@ -397,7 +409,6 @@ void connectionHandler(int sock_fd)
             // If request not in cache
             else {
                 cache.cache_store_mutex.unlock();
-                
                 if (DEBUG) cout << "Client request not in cache. Calling makeRequestConnection to host:" << request.GetHost() << " port:" << request.GetPort() << endl;
                 
                 // Create new thread to handle proxy->remote server connection
@@ -405,14 +416,9 @@ void connectionHandler(int sock_fd)
                 if (DEBUG) cout << "Waiting for remote thread..." << endl;
                 // Wait for remote thread to exit
                 remote_thread.join();
-                
-                // Close connection to remote server
-                if(strcmp(request.FindHeader("Connection").c_str(), "close") == 0 ||
-                   strcmp(request.GetVersion().c_str(), "1.0") == 0)
-                    break; // If the connection is not persisent => close
             }
             
-            // If the connection is not persisent, close connection to remote server
+            // If the connection is non-persisent, close connection
             if(strcmp(request.FindHeader("Connection").c_str(), "close") == 0 ||
                strcmp(request.GetVersion().c_str(), "1.0") == 0)
                 break;
@@ -439,12 +445,25 @@ void connectionHandler(int sock_fd)
         if (DEBUG) cout << "Done processing..." << endl;
     }
     
-    if (DEBUG) cout << "* Closing connection sock_fd:" << sock_fd << endl;
+    if (DEBUG) cout << "Closing client connection, sock_fd:" << sock_fd << endl;
     close(sock_fd);
 }
 
+/*@brief Periodically checks for idle client->proxy and proxy->remote-server connections
+ */
 void cacheCleanupHandler() {
-    cache.cacheConnectionCleanup();
+    while (1) {
+        // Check proxy->remote-server connections
+        cache.cache_connections_mutex.lock();
+        cache.cacheConnectionCleanup();
+        cache.cache_connections_mutex.unlock();
+        // Check client->proxy connections
+        cache.cache_clients_mutex.lock();
+        cache.cacheClientCleanup();
+        cache.cache_clients_mutex.unlock();
+        // Sleep for specificed amount of time before checking again
+        sleep(CONNECTION_TIMEOUT);
+    }
 }
 
 int main (int argc, char *argv[])
@@ -459,17 +478,23 @@ int main (int argc, char *argv[])
     
     // Create Boost thread group
     boost::thread_group t_group;
+    // Create thread to handle proxy->remote-server timeout
     t_group.create_thread(&cacheCleanupHandler);
     
     // Accept incoming connections
     while (1) {
-        // Connector's address info
+        // Incoming connection's info
         struct sockaddr_storage their_addr;
         socklen_t sin_size = sizeof their_addr;
         char s[INET6_ADDRSTRLEN];
         
-        // Accept new connection
+        // Accept new client connection
         int new_fd = accept(sockfd, (struct sockaddr *)&their_addr, &sin_size);
+        
+        // Add new client to cache clients
+        cache.cache_clients_mutex.lock();
+        cache.addToClients(new_fd);
+        cache.cache_clients_mutex.unlock();
         
         if (new_fd < 0) {
             perror("Accept");
@@ -479,15 +504,14 @@ int main (int argc, char *argv[])
             inet_ntop(their_addr.ss_family, get_in_addr((struct sockaddr *)&their_addr), s, sizeof s);
             if (DEBUG) printf("server: got connection from %s\n", s);
             
-            // Make new Boost thread in group
+            // Make new Boost thread in group and pass off to connectionHandler()
             if (DEBUG) cout << "Making new thread with boost..." << endl;
             t_group.create_thread(boost::bind(&connectionHandler, new_fd));
         }
     }
     t_group.join_all();
     
-    cout << "Proxy server shutting down." << endl;
+    cout << "Proxy server: shutting down..." << endl;
     close(sockfd);
-    
     return 0;
 }

@@ -36,9 +36,6 @@ void *get_in_addr(struct sockaddr *sa)
     return &(((struct sockaddr_in6*)sa)->sin6_addr);
 }
 
-/* @brief Makes server listener
- * Used Beej's guide as reference
- */
 int makeServerConnection(const char *port)
 {
     if (DEBUG) cout << "Making server connection on port:" << port << endl;
@@ -56,9 +53,8 @@ int makeServerConnection(const char *port)
     hints.ai_socktype = SOCK_STREAM;    // TCP stream sockets
     hints.ai_flags = AI_PASSIVE;        // Use my IP
     
-    
     if ((status = getaddrinfo(NULL, port, &hints, &servinfo)) != 0) {
-        fprintf(stderr, "getaddrinfo: %s\n", gai_strerror(status));
+        perror("Getaddrinfo");
         return -1;
     }
     
@@ -66,38 +62,34 @@ int makeServerConnection(const char *port)
     for(p = servinfo; p != NULL; p = p->ai_next) {
         // Create socket
         if ((sockfd = socket(p->ai_family, p->ai_socktype, p->ai_protocol)) == -1) {
-            perror("server: socket");
+            perror("Socket");
             continue;
         }
         // Set socket options
         if (setsockopt(sockfd, SOL_SOCKET, SO_REUSEADDR, &yes, sizeof(int)) == -1) {
-            perror("setsockopt");
+            perror("Setsockopt");
             exit(1); }
         // Bind
         if (bind(sockfd, p->ai_addr, p->ai_addrlen) == -1) {
             close(sockfd);
-            perror("server: bind");
+            perror("Bind");
             continue;
         }
         break;
     }
-
     // No binds
     if (p == NULL)  {
-        fprintf(stderr, "server: failed to bind\n");
+        perror("Bind");
         return -2;
     }
-    
+
     freeaddrinfo(servinfo);             // Clean up struct
-    
     // Start listening
     if (listen(sockfd, BACKLOG) == -1) {
-        perror("listen");
+        perror("Listen");
         exit(1);
     }
-    
-    if (DEBUG) printf("makeServerConnection:Success\n");
-    
+    if (DEBUG) cout << "makeServerConnection:Success" << endl;;
     return sockfd;
 }
 
@@ -109,7 +101,6 @@ int makeClientConnection(const char *host, const char *port)
     if (DEBUG) cout << "Making client connection to host:" << host << " port:" << port << endl;
     
     int sockfd;
-
     struct addrinfo hints;
     struct addrinfo *servinfo;
     struct addrinfo *p;
@@ -122,10 +113,9 @@ int makeClientConnection(const char *host, const char *port)
     hints.ai_socktype = SOCK_STREAM;
     
     if ((status = getaddrinfo(host, port, &hints, &servinfo)) != 0) {
-        perror("getaddrinfo");
+        perror("Getaddrinfo");
         return -1;
     }
-    
     // Loop through all the results and connect to the first we can
     for (p = servinfo; p != NULL; p = p->ai_next) {
         if ((sockfd = socket(p->ai_family, p->ai_socktype, p->ai_protocol)) == -1) {
@@ -139,7 +129,6 @@ int makeClientConnection(const char *host, const char *port)
         }
         break;
     }
-    
     // No binds
     if (p == NULL) {
         perror("Bind");
@@ -147,9 +136,8 @@ int makeClientConnection(const char *host, const char *port)
     }
     
     inet_ntop(p->ai_family, get_in_addr((struct sockaddr *)p->ai_addr), s, sizeof s);
-    //printf("client: connecting to %s on sock_fd:%d\n", s, sockfd);
     
-    freeaddrinfo(servinfo); // all done with this structure
-    if (DEBUG) printf("makeClientConnection:Success server:%s sockfd:%d\n", s, sockfd);
+    freeaddrinfo(servinfo);         // Clean up struct
+    if (DEBUG) cout << "Client: connected to " << s << " on sock_fd:" << sockfd << endl;
     return sockfd;
 }

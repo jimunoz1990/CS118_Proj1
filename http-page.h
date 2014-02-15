@@ -23,16 +23,21 @@ private:
     string data;
     
 public:
+    /*@brief Constructor
+     */
     Page(time_t expTime, string lastMod, string entityTag, string dat);
     
+    
+    /************************
+     *   Getter functions   *
+     ***********************/
     string getLastModify();
-    
-    time_t getExpire(void);
-    
+    time_t getExpire();
     string getETag();
+    string getData();
     
-    string getData(void);
-    
+    /*@brief Checks if time of page is expired
+     */
     bool isExpired();
     
 };

@@ -58,12 +58,10 @@ string Page::getData(void){
 }
 
 bool Page::isExpired(){
-    time_t current = time(0); // Get current time
-    
-    // Debug
-    if (DEBUG) cout << "Difference: "<<difftime(expireTime, current)<<" \n Current: "<<current<<" \n Expire: " <<expireTime << endl;
-    
-    if(difftime(expireTime, current)<0)
+    // Get current time
+    time_t current = time(NULL);
+    if (DEBUG) cout << "Difference: "<< difftime(expireTime, current) << " \n Current: " << current <<" \n Expire: " <<expireTime << endl;
+    if (difftime(expireTime, current) < 0)
         return true;
     else
         return false;

@@ -39,8 +39,9 @@ using namespace std;
 #define MAX_SERVER_CONNECTIONS 100
 #define CONNECTION_TIMEOUT 30
 
-/* Cache store functions
- */
+/***************************************
+ *        Cache store functions        *
+ **************************************/
 Page* Cache::getFromStore(string URL) {
     map<string, Page>::iterator iter;
     iter = store.find(URL); // check if the URL is stored in the cache
@@ -59,8 +60,9 @@ void Cache::addToStore(string URL, Page webpg) {
     store.insert(map<string, Page>::value_type(URL, webpg));
 }
 
-/* Cache connections functions 
- */
+/***************************************
+ *     Cache connections functions     *
+ **************************************/
 void Cache::addToConnections(string URL, int sock_fd) {
     // Check if there is space for a new entry
     if (connections.size() < 100) {
@@ -79,7 +81,6 @@ void Cache::addToConnections(string URL, int sock_fd) {
         // Add corresponding entry to cache connections_age
         time_t cur_time = time(NULL);
         connections_age.insert(map<string, int>::value_type(URL, cur_time));
-        
     }
 }
 
@@ -126,32 +127,63 @@ void Cache::cacheConnectionCleanup() {
     if (DEBUG) cout << "In cacheConnectionCleanup()..." << endl;
     int sock_fd = 0;
     string key = "";
-    while (1) {
-        cache_connections_mutex.lock();
-        
-        if (DEBUG) {
-            cout << "Cache (connections) size:" << connections.size() << endl;
-            cout << "Cache (connections_age) size:" << connections_age.size() << endl;
+
+    if (DEBUG) {
+        cout << "Cache (connections) size:" << connections.size() << endl;
+        cout << "Cache (connections_age) size:" << connections_age.size() << endl;
+    }
+    
+    time_t cur_time = time(NULL);
+    map<string, time_t>::iterator iter;
+    for (iter = connections_age.begin(); iter != connections_age.end(); iter++) {
+        if (iter->second + CONNECTION_TIMEOUT < cur_time) {
+            key = iter->first;
+            sock_fd = getFromConnections(iter->first);
+            close(sock_fd);
+            removeFromConnections(key);
+            if (DEBUG) cout << "Closed socket:" << sock_fd << endl;
         }
-        
-        time_t cur_time = time(NULL);
-        map<string, time_t>::iterator iter;
-        for (iter = connections_age.begin(); iter != connections_age.end(); iter++) {
-            if (iter->second + CONNECTION_TIMEOUT < cur_time) {
-                key = iter->first;
-                sock_fd = getFromConnections(iter->first);
-                close(sock_fd);
-                removeFromConnections(key);
-                if (DEBUG) cout << "Closed socket:" << sock_fd << endl;
-            }
+    }
+
+    if (DEBUG) {
+        cout << "Cache (connections) size:" << connections.size() << endl;
+        cout << "Cache (connections_age) size:" << connections_age.size() << endl;
+    }
+}
+
+/***************************************
+ *       Cache clients functions       *
+ **************************************/
+
+void Cache::addToClients(int sock_fd) {
+    clients.erase(sock_fd);
+    time_t cur_time = time(NULL);
+    clients.insert(map<int, time_t>::value_type(sock_fd, cur_time));
+}
+
+void Cache::removeFromClients(int sock_fd) {
+    clients.erase(sock_fd);
+}
+
+void Cache::cacheClientCleanup() {
+    if (DEBUG) {
+        cout << "In cacheClientCleanup()..." << endl;
+        cout << "Cache (clients) size:" << clients.size() << endl;
+    }
+    
+    int sock_fd = 0;
+    time_t cur_time = time(NULL);
+    map<int, time_t>::iterator iter;
+    for (iter = clients.begin(); iter != clients.end(); iter++) {
+        if (iter->second + CONNECTION_TIMEOUT < cur_time) {
+            if (DEBUG) cout << "cached time:" << iter->second + CONNECTION_TIMEOUT << " vs current:" << cur_time << endl;
+            sock_fd = iter->first;
+            close(sock_fd);
+            removeFromClients(sock_fd);
+            if (DEBUG) cout << "Closed socket:" << sock_fd << endl;
         }
-        cache_connections_mutex.unlock();
-        if (DEBUG) {
-            cout << "Cache (connections) size:" << connections.size() << endl;
-            cout << "Cache (connections_age) size:" << connections_age.size() << endl;
-            cout << "Sleeping..." << endl;
-        }
-        cache_connections_mutex.unlock();
-        sleep(CONNECTION_TIMEOUT);
+    }
+    if (DEBUG) {
+        cout << "Cache (clients) size:" << clients.size() << endl;
     }
 }

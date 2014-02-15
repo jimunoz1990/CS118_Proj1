@@ -33,17 +33,24 @@ private:
      */
     map<string, int> connections;
     
-    /*@brief Caches
+    /*@brief Caches each proxy->remote-server connection and when connection was last used.
      *       Key: connection sock_fd, Value: time_t when last used
      */
     map<string, time_t> connections_age;
+    
+    /*@brief Caches each client->proxy connections and when connection was last active.
+     *       Key: connection sock_fd, Value: time_t when last used
+     */
+    map<int, time_t> clients;
 	
 public:
     /*@brief Get value from cache store
+     *@param URL [in] URL key
+     *@returns Page corresponding to URL key
      */
     Page* getFromStore(string URL);
     
-    /*@brief Remove from cache store
+    /*@brief Remove <URL, Page> from cache store
      */
 	void removeFromStore(string URL);
     
@@ -59,20 +66,40 @@ public:
      */
     int getFromConnections(string URL);
     
-    /*@brief Remove from cache connections and corresponding entry in connections_age
+    /*@brief Remove <URL, scok_fd> from cache connections and corresponding entry in connections_age
      */
     void removeFromConnections(string URL);
     
     /*@brief Cache connections replacement policy
+     * When the number of proxy->remote-server connections surpasses MAX_SERVER_CONNECTIONS (100),
+     * removes the oldest connection from the cache
      */
     void cacheReplacementPolicy();
     
-    /*@brief Cache cleanup
+    /*@brief Cache connection cleanup
+     * Periodically checks proxy->remote-server connections. If the connection's
+     * time-since-last-used surpasses CONNECTION_TIMEOUT (120 seconds), then the connection
+     * will be closed.
      */
     void cacheConnectionCleanup();
-     
+    
+    /*@brief Add sock_fd to cache clients
+     */
+    void addToClients(int sock_fd);
+    
+    /*@brief Remove sock_fd from cache clients
+     */
+    void removeFromClients(int sock_fd);
+    
+    /*@brief Cache client cleanup
+     */
+    void cacheClientCleanup();
+    
+    /*@brief Mutex locks for cache store and cache connections/connections age
+     */
     boost::mutex cache_store_mutex;
     boost::mutex cache_connections_mutex;
+    boost::mutex cache_clients_mutex;
     
 }; //cache; // declare cache as a Cache object
 
