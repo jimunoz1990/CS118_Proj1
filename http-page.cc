@@ -34,6 +34,10 @@
 #include <boost/thread.hpp>
 #include <boost/bind.hpp>
 
+using namespace std;
+
+#define DEBUG 0
+
 Page::Page(time_t expTime, string lastMod, string entityTag, string dat){
     expireTime = expTime;
     eTag = entityTag;

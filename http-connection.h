@@ -9,7 +9,6 @@
 
 #include <iostream>
 
-#define DEBUG 1
 #define PROXY_PORT "14886"
 #define REMOTE_PORT "80"
 #define BACKLOG 20

@@ -28,6 +28,8 @@
 
 using namespace std;
 
+#define DEBUG 1
+
 void *get_in_addr(struct sockaddr *sa)
 {
     if (sa->sa_family == AF_INET) {

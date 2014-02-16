@@ -32,7 +32,7 @@
 
 using namespace std;
 
-#define DEBUG 1
+#define DEBUG 0
 #define BUFFER_SIZE 1024
 #define TIMEOUT 100
 #define CONNECTION_TIMEOUT 30
@@ -229,7 +229,7 @@ void makeRequestConnection(HttpRequest request, int sock_fd)
     HttpResponse response;
     response.ParseResponse(response_string.c_str(), response_string.size());
     
-    string URL = request.GetHost() + "/" + request.GetPath();
+    string URL = request.GetHost() + ":" + port + "/" + request.GetPath();
     string status = response.GetStatusCode();
     
     if (status == "304") {
@@ -262,25 +262,27 @@ void makeRequestConnection(HttpRequest request, int sock_fd)
         // Page has an expiration time
         if (expireTime != "") {
             if((expireT=timeConvert(expireTime))!=0 && difftime(expireT, current) > 0)
-            {// add to cache with normal expiration time
+            { // Add to cache with normal expiration time
                 if (DEBUG) cout << "Returned page response has expireT:" << expireT << " current:" << current << endl;
                 Page pg = Page(timeConvert(expireTime), lastMod, eTag, response_string);
                 cache.cache_store_mutex.lock();
                 cache.addToStore(URL, pg);
                 cache.cache_store_mutex.unlock();
             }
-            else{ // expire exists but is not valid
+            else{ // Expiration time exists but is not valid
                 if (DEBUG) cout << "Expire time is invalid, expireT:" << expireT << " current:" << current << endl;
                 cache.cache_store_mutex.lock();
                 cache.removeFromStore(URL);
                 cache.cache_store_mutex.unlock();
             }
         }
-        else if (cacheCheck != "") { // if there is a max-age field
+        // If there is a max-age field
+        else if (cacheCheck != "") {
             long maxT =0;
             if((maxT=cacheParse(cacheCheck))!=0 && date!="")
-            {//add to cache using cache-control
-                expireT = timeConvert(date)+maxT; //implement max-age
+            {
+                // Add to cache using cache-control
+                expireT = timeConvert(date)+maxT;
                 Page pg = Page(expireT, lastMod, eTag, response_string);
                 cache.cache_store_mutex.lock();
                 cache.addToStore(URL, pg);
@@ -289,27 +291,26 @@ void makeRequestConnection(HttpRequest request, int sock_fd)
                 
             }
             else
-            {// cache not enabled
+            {
+                // Cache not enabled
                 if (DEBUG) cout << "Cache not enabled" << endl;
                 cache.cache_store_mutex.lock();
                 cache.removeFromStore(URL);
                 cache.cache_store_mutex.unlock();
             }
         }
-        else{ // no data on cache
-            if (DEBUG) cout << "No expiration date." << endl;
+        // No expiration date
+        else{
+            if (DEBUG) cout << "Response has no expiration date." << endl;
             cache.cache_store_mutex.lock();
-            cache.removeFromStore(URL);
+            Page pg = Page(timeConvert(expireTime), lastMod, eTag, response_string);
+            cache.addToStore(URL, pg);
             cache.cache_store_mutex.unlock();
         }
     }
     // Not-Modified
     else if (status== "304"){
-        /*
-         cache.cache_store_mutex.lock();
-         string data = cache.getFromStore(URL)->getData();
-         cache.cache_store_mutex.unlock();
-         */
+        // Do nothing
     }
 }
 
@@ -365,8 +366,10 @@ void connectionHandler(int sock_fd)
                     cout << "User-Agent: " << header << endl;
                 cout << endl;
             }
+            char port[6];
+            sprintf(port, "%u", request.GetPort());
             
-            string key = request.GetHost() + "/" + request.GetPath();
+            string key = request.GetHost() + ":" + port + "/" + request.GetPath();
             if (DEBUG) cout << "Checking if:" << key << " is in cache..." << endl;
 
             // Check cache for request

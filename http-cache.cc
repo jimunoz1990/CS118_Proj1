@@ -37,7 +37,8 @@
 using namespace std;
 
 #define MAX_SERVER_CONNECTIONS 100
-#define CONNECTION_TIMEOUT 30
+#define CONNECTION_TIMEOUT 200
+#define DEBUG 0
 
 /***************************************
  *        Cache store functions        *
@@ -74,6 +75,7 @@ void Cache::addToConnections(string URL, int sock_fd) {
         
     }
     else {
+        if (DEBUG) cout << "***HIT MAX CONNECTION LIMIT***" << endl;
         // Cache replacement policy
         cacheReplacementPolicy();
         connections.insert(map<string, int>::value_type(URL, sock_fd));
@@ -82,6 +84,7 @@ void Cache::addToConnections(string URL, int sock_fd) {
         time_t cur_time = time(NULL);
         connections_age.insert(map<string, int>::value_type(URL, cur_time));
     }
+    if (DEBUG) cout << "CONNECTIONS size:" << connections.size() << endl;
 }
 
 int Cache::getFromConnections(string URL) {
@@ -159,6 +162,7 @@ void Cache::addToClients(int sock_fd) {
     clients.erase(sock_fd);
     time_t cur_time = time(NULL);
     clients.insert(map<int, time_t>::value_type(sock_fd, cur_time));
+    if (DEBUG) cout << "CLIENTS size:" << clients.size() << endl;
 }
 
 void Cache::removeFromClients(int sock_fd) {
