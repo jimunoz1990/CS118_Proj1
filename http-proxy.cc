@@ -63,11 +63,11 @@ time_t timeConvert(string s){
     }
 }
 
-/*@brief 
+/*@brief Parse response header to find cache-control: public, private, no cache, no store
  */
-long cacheParse(string s) { //cache-control: public, private, no cache, no store
+long cacheParse(string s) {
     if(s.find("public") != string::npos || s.find("private") != string::npos || s.find("no-cache") != string::npos || s.find("no-store") != string::npos)
-        return 0; // string::npos max value for size_t- could also use -1
+        return 0; // String::npos max value for size_t, could also use -1
     
     size_t position = string::npos;
     if ((position = s.find("max-age")) != string::npos) {
@@ -132,7 +132,8 @@ int fetchFromRemoteHost(int sock_fd, string& response)
 }
 
 
-/*@brief Make remote request connection
+/*@brief Make remote server connection
+ * Function gets called if client request is not in cache or is expired.
  */
 void makeRequestConnection(HttpRequest request, int sock_fd)
 {
