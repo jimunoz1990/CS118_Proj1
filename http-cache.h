@@ -96,15 +96,15 @@ public:
      */
     void cacheClientCleanup();
     
-    /*@brief Iterates through cached connections and closes them all
+    /*@brief Iterates through cached connections and closes them all.
      */
     void killAll();
 
-    /*@Returns number of persistent client connections we have open.
+    /*@brief Returns number of persistent client connections.
      */
     int getNumClients();
     
-    /*@brief Mutex locks for cache store, cache connections/connections age, and cache clients
+    /*@brief Mutex locks for cache store, cache connections/connections age, and cache clients.
      */
     boost::mutex cache_store_mutex;
     boost::mutex cache_connections_mutex;

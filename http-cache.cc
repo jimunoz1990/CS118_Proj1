@@ -37,7 +37,7 @@
 using namespace std;
 
 #define MAX_SERVER_CONNECTIONS 100
-#define CONNECTION_TIMEOUT 200
+#define CONNECTION_TIMEOUT 120
 #define DEBUG 0
 
 /***************************************

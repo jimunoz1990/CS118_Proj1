@@ -32,10 +32,10 @@
 
 using namespace std;
 
-#define DEBUG 1
+#define DEBUG 0
 #define BUFFER_SIZE 1024
 #define TIMEOUT 100
-#define CONNECTION_TIMEOUT 30
+#define CHECK_CONNECTION_TIMEOUT 10
 
 static Cache cache;
 static int running = 1;
@@ -487,7 +487,7 @@ void cacheCleanupHandler() {
         cache.cacheClientCleanup();
         cache.cache_clients_mutex.unlock();
         // Sleep for specificed amount of time before checking again
-        sleep(CONNECTION_TIMEOUT);
+        sleep(CHECK_CONNECTION_TIMEOUT);
     }
 }
 
@@ -516,10 +516,7 @@ int main (int argc, char *argv[])
         
         // Accept new client connection
         cache.cache_clients_mutex.lock();
-       
-        
-        if (cache.getNumClients() < 20)
-        {
+        if (cache.getNumClients() < 20) {
             cache.cache_clients_mutex.unlock();
             
             int new_fd = accept(sockfd, (struct sockaddr *)&their_addr, &sin_size);
@@ -542,7 +539,7 @@ int main (int argc, char *argv[])
                 if (DEBUG) cout << "Making new thread with boost..." << endl;
                 t_group.create_thread(boost::bind(&connectionHandler, new_fd));
             }
-      }
+        }
         else
         {
             cache.cache_clients_mutex.unlock();
