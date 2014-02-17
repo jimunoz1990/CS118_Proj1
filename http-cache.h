@@ -96,6 +96,10 @@ public:
      */
     void cacheClientCleanup();
     
+    /*@brief Iterates through cached connections and closes them all
+     */
+    void killAll();
+    
     /*@brief Mutex locks for cache store, cache connections/connections age, and cache clients
      */
     boost::mutex cache_store_mutex;

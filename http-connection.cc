@@ -25,6 +25,7 @@
 #include <netinet/in.h>
 #include <netdb.h>
 #include <arpa/inet.h>
+#include <sys/fcntl.h>
 
 using namespace std;
 
@@ -67,6 +68,10 @@ int makeServerConnection(const char *port)
             perror("Socket");
             continue;
         }
+        
+        // Set socket to non-blocking
+        fcntl(sockfd, F_SETFL, O_NONBLOCK);
+        
         // Set socket options
         if (setsockopt(sockfd, SOL_SOCKET, SO_REUSEADDR, &yes, sizeof(int)) == -1) {
             perror("Setsockopt");

@@ -191,3 +191,19 @@ void Cache::cacheClientCleanup() {
         cout << "Cache (clients) size:" << clients.size() << endl;
     }
 }
+
+void Cache::killAll() {
+    int sock_fd;
+    map<string, int>::iterator iter;
+    for (iter = connections.begin(); iter != connections.end(); iter++) {
+        sock_fd = iter->second;
+        close(sock_fd);
+    }
+    map<int, time_t>::iterator iter2;
+    for (iter2 = clients.begin(); iter2 != clients.end(); iter2++) {
+        sock_fd = iter2->first;
+        close(sock_fd);
+    }
+    if (DEBUG) cout << "connections.size():" << connections.size() << endl;
+    if (DEBUG) cout << "clients.size():" << clients.size() << endl;
+}

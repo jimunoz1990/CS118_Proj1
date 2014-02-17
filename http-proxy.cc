@@ -38,6 +38,7 @@ using namespace std;
 #define CONNECTION_TIMEOUT 30
 
 static Cache cache;
+static int running = 1;
 
 /* TODO List:
  * 1) DONE, JM Add logic to cache unless specified not to in response header
@@ -48,6 +49,26 @@ static Cache cache;
  * 6) Review error logic (close corresponding socket or not)
  * 7) Timeout for proxy->server threads
  */
+
+/*@brief Interrupt handler to handle graceful exit of proxy server upon user input
+ */
+void exitHandler()
+{
+    if (DEBUG) cout<< "In exitHander!" << endl;
+    while (1)
+    {
+        char ch = cin.get();
+        if (ch == 'x')
+        {
+            if (DEBUG) cout << "X key was pressed. Cleaning up..." << endl;
+            // Close all connections
+            cache.killAll();
+            running = 0;
+            break;
+        }
+        sleep(1);
+    }
+}
 
 /*@brief Converts a time from string format to time_t
  */
@@ -484,9 +505,10 @@ int main (int argc, char *argv[])
     boost::thread_group t_group;
     // Create thread to handle proxy->remote-server timeout
     t_group.create_thread(&cacheCleanupHandler);
+    t_group.create_thread(&exitHandler);
     
     // Accept incoming connections
-    while (1) {
+    while (running) {
         // Incoming connection's info
         struct sockaddr_storage their_addr;
         socklen_t sin_size = sizeof their_addr;
@@ -495,16 +517,16 @@ int main (int argc, char *argv[])
         // Accept new client connection
         int new_fd = accept(sockfd, (struct sockaddr *)&their_addr, &sin_size);
         
-        // Add new client to cache clients
-        cache.cache_clients_mutex.lock();
-        cache.addToClients(new_fd);
-        cache.cache_clients_mutex.unlock();
-        
         if (new_fd < 0) {
-            perror("Accept");
+            //perror("Accept");
             continue;
         }
         else {
+            // Add new client to cache clients
+            cache.cache_clients_mutex.lock();
+            cache.addToClients(new_fd);
+            cache.cache_clients_mutex.unlock();
+            
             inet_ntop(their_addr.ss_family, get_in_addr((struct sockaddr *)&their_addr), s, sizeof s);
             if (DEBUG) printf("server: got connection from %s\n", s);
             
@@ -513,8 +535,7 @@ int main (int argc, char *argv[])
             t_group.create_thread(boost::bind(&connectionHandler, new_fd));
         }
     }
-    t_group.join_all();
-    
+    t_group.interrupt_all();
     cout << "Proxy server: shutting down..." << endl;
     close(sockfd);
     return 0;
