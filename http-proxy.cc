@@ -517,9 +517,10 @@ int main (int argc, char *argv[])
         // Accept new client connection
         cache.cache_clients_mutex.lock();
        
-        cache.cache_clients_mutex.unlock();
+        
         if (cache.getNumClients() < 20)
         {
+            cache.cache_clients_mutex.unlock();
             
             int new_fd = accept(sockfd, (struct sockaddr *)&their_addr, &sin_size);
             
@@ -544,10 +545,12 @@ int main (int argc, char *argv[])
       }
         else
         {
+            cache.cache_clients_mutex.unlock();
             if (DEBUG) printf("20 clients connected; cannot accept any more client connections.");
         }
     }
     t_group.interrupt_all();
+    
     cout << "Proxy server: shutting down..." << endl;
     close(sockfd);
     return 0;
