@@ -52,4 +52,4 @@ A separate thread is created to run cacheCleanupHandler(). It periodically calls
 To exit the cache, type ‘x’ then hit enter.  We have a thread, running the function exitHandler(), which periodically checks std::in for input and if it receives ‘x’ as input, it will gracefully close the server.  
 
 
-Below are additional details and specifics of our implementation. It lists all the function declarations and a brief summary of each.
+Attached in a separate appendix file are additional details and specifics of our implementation. It lists all the function declarations/classes created for our project and a brief summary of each. 
