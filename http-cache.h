@@ -99,6 +99,10 @@ public:
     /*@brief Iterates through cached connections and closes them all
      */
     void killAll();
+
+    /*@Returns number of persistent client connections we have open.
+     */
+    int getNumClients();
     
     /*@brief Mutex locks for cache store, cache connections/connections age, and cache clients
      */

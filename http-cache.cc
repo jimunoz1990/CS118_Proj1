@@ -207,3 +207,9 @@ void Cache::killAll() {
     if (DEBUG) cout << "connections.size():" << connections.size() << endl;
     if (DEBUG) cout << "clients.size():" << clients.size() << endl;
 }
+int Cache::getNumClients() {
+    
+    if (DEBUG) cout<<"Total number of clients: "<<clients.size()<<endl;
+    return clients.size();
+
+}

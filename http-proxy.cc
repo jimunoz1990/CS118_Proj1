@@ -32,7 +32,7 @@
 
 using namespace std;
 
-#define DEBUG 0
+#define DEBUG 1
 #define BUFFER_SIZE 1024
 #define TIMEOUT 100
 #define CONNECTION_TIMEOUT 30
@@ -515,24 +515,36 @@ int main (int argc, char *argv[])
         char s[INET6_ADDRSTRLEN];
         
         // Accept new client connection
-        int new_fd = accept(sockfd, (struct sockaddr *)&their_addr, &sin_size);
-        
-        if (new_fd < 0) {
-            //perror("Accept");
-            continue;
-        }
-        else {
-            // Add new client to cache clients
-            cache.cache_clients_mutex.lock();
-            cache.addToClients(new_fd);
-            cache.cache_clients_mutex.unlock();
+        cache.cache_clients_mutex.lock();
+       
+        cache.cache_clients_mutex.unlock();
+        if (cache.getNumClients() < 20)
+        {
             
-            inet_ntop(their_addr.ss_family, get_in_addr((struct sockaddr *)&their_addr), s, sizeof s);
-            if (DEBUG) printf("server: got connection from %s\n", s);
+            int new_fd = accept(sockfd, (struct sockaddr *)&their_addr, &sin_size);
             
-            // Make new Boost thread in group and pass off to connectionHandler()
-            if (DEBUG) cout << "Making new thread with boost..." << endl;
-            t_group.create_thread(boost::bind(&connectionHandler, new_fd));
+            if (new_fd < 0) {
+                //perror("Accept");
+                continue;
+            }
+            else {
+                // Add new client to cache clients
+                cache.cache_clients_mutex.lock();
+                cache.addToClients(new_fd);
+                cache.cache_clients_mutex.unlock();
+                
+                inet_ntop(their_addr.ss_family, get_in_addr((struct sockaddr *)&their_addr), s, sizeof s);
+                if (DEBUG) cout<<"Cache numclients: "<<cache.getNumClients()<<endl;
+                if (DEBUG) printf("server: got connection from %s\n", s);
+                
+                // Make new Boost thread in group and pass off to connectionHandler()
+                if (DEBUG) cout << "Making new thread with boost..." << endl;
+                t_group.create_thread(boost::bind(&connectionHandler, new_fd));
+            }
+      }
+        else
+        {
+            if (DEBUG) printf("20 clients connected; cannot accept any more client connections.");
         }
     }
     t_group.interrupt_all();
