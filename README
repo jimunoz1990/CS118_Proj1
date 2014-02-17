@@ -1,33 +1,55 @@
-General
-=======
+﻿Overview:
+Our HTTP proxy implements all the requirements defined in the specification. It is able to handle multiple concurrent connections from clients and fetches to and from remote servers. Cache logic is implemented to return cached data to client when possible and will perform conditional-GETs when necessary. Locks are in place to ensure atomicity and avoid race conditions. Our proxy takes into account GMT and GMT-8 time differences. Our proxy passes the provided http-tester.py and http-tester-conditionalGET.py test scripts. 
 
-To learn more about ./waf, refer to http://code.google.com/p/waf/
-and http://waf.googlecode.com/svn/docs/wafbook/single.html
 
-Ideally, you will need only to add your source files in wscript, which is basically a Python program.
+Details of our implementation are discussed below.
+ 
+Proxy Server Set up:
+The proxy server is initialized by makeServerConnection(). It is straight-forward and performs the necessary socket function calls: socket(), bind(), listen() to get the proxy server up and running. After the initialization of the proxy server, it enters an infinite while loop to listen for and accept incoming messages. For each incoming message, the proxy will create a new thread to handle that client.
+ 
+Multithreading:
+We decided to use boost library to handle our multithreading. Each incoming connection to the proxy server is handled in a new thread that runs connectionHandler(). Each newly created thread is part of a boost::thread_group for efficient thread management.  We also have a thread to manage persistent connections, and closes the connection if it receives no request/response within a timeout of CONNECTION_TIMEOUT seconds.
+ 
+Connection Limit:
+We limit the number of client->proxy connections to 20 and the number of proxy->remote-server connections to 100. To limit the number of incoming connections, we only accept new incoming clients when we have less than 20 entries in our client->proxy connection cache.  We further defined BACKLOG to be 20 and pass it to the backlog argument in the proxy’s listen() call. For the proxy->remote-server connections, every time we add a new connection to the cache, we check the size of the cache. If the size of the cache is greater than or equal to MAX_SERVER_CONNECTIONS, which is defined to be 100, we iterate through the cache to find and remove the oldest connection. This is our replacement policy for the cached proxy->remote-server connections.
 
-How to use skeleton
-===================
 
-Due to restrictions on lnxsrv, several steps necessary to compile and run (if you're using this skeleton):
+Cache Implementation:
+We implemented class Cache and initialized a global instance cache that is used by the proxy. Our cache serves three main purposes: caching the HTML data from original remote server, caching the sockets for the proxy->remote-server connections and the sockets for the client->proxy-server connections. We used std::map in our implementation.
 
-1. The following lines should be added to your ~/.bashrc
 
-export PATH=/usr/local/cs/bin:$PATH
-export LD_LIBRARY_PATH=/u/cs/grad/yingdi/boost/lib:/usr/local/lib64/:$LD_LIBRARY_PATH
+Page Cache
+The page cache is a store of cached web content, stored as a map between the URL and a class Page object. The Page object contains the expiration time, last modified time, and content from a previous web request. The header information is used when checking the expiration and last modified time in the conditional-GET logic.
 
-2. To configure environment
 
-./waf configure
+Proxy->Remote Server Connections Cache:
+The proxy->remote-server connections cache are two separate maps that share the same hostname key. One map stores the socket in the values and the other other stores the time-last-active. With the hostname as the key, we can easily check to see if a persistent connection has been previously established and when the connection was last active. 
 
-If there are any errors, please email me: iliamo@ucla.edu 
-Please, mark your message with [CS118] header
 
-3. To build/rebuild the code
+Client->Proxy Connections Cache:
+The client->proxy connections cache is a map with the socket as the key and the time-last-active as the value. Since each client connection is handled in it’s own thread, we use this cache to keep track of all the connections in order to implement the timeout policy.
 
-./waf
 
-4. All compiled executables are located in build/, so you can run them as this:
+Page Caching Logic:
+After the proxy receives a successful HTTP request from the remote server back, it must make a decision whether to cache that object. On receiving a successful HTTP 200 status code, we parses the response header to extract the expire time, max-age, cache-control, and last-modified fields. If the expiration time exists, we check that it is valid (e.g. expiration time > current time) and add the page to the cache.  Otherwise, we check for a max-age and set the expiration time by adding the max-age to the current time.
 
-build/http-proxy
 
+Proxy to Remote Server (GET):
+After receiving a GET request from a client and checking that the request is not in cache or is expired, the proxy creates a separate boost::thread that calls makeRequestConnection(). At this point, the proxy acts as a client. The proxy checks the proxy->remote-server connections cache to see whether a socket connection to the remote server has been previously established. If it has, then it polls() the socket to make sure the connection is still alive. If it is, it will reuse the connection and update the corresponding time-last-active. If the connection is dead, it will close the socket, remove the connection from the cache, and make a new connection to the 
+remote-server. On successful send and receive, the response will be sent back to the client. The proxy will then run the caching logic to perform the correct caching actions. 
+
+
+Conditional-GET:
+If the cached data has expired, proxy will also create a separate boost::thread that calls makeRequestConnection(). However, instead of the regular GET logic flow, the proxy will format a conditional-GET request to the remote server. Upon receiving a 304 status code, the proxy will return the cached data to the client. Otherwise, it falls back to the regular GET logic flow.
+  
+Locks and Atomicity:
+We implemented boost::mutex locks for the caches to ensure atomicity when writing and reading from the cache. Since there are multiple threads, it is important to ensure that writes and reads to the cache from concurrent threads are not interweaved and cause any race conditions. Each thread must hold the lock corresponding to the cache prior to any writes and rights.
+ 
+Timeout and Clean Up:
+A separate thread is created to run cacheCleanupHandler(). It periodically calls the corresponding Cache member functions to iterate through the client->proxy and proxy->remote-server connections. If any of the connections have been idle/inactive for longer than the specified CONNECTION_TIMEOUT, then the socket corresponding to that connection will be closed and entry removed from the cache.
+
+
+To exit the cache, type ‘x’ then hit enter.  We have a thread, running the function exitHandler(), which periodically checks std::in for input and if it receives ‘x’ as input, it will gracefully close the server.  
+
+
+Below are additional details and specifics of our implementation. It lists all the function declarations and a brief summary of each.

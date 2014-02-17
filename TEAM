@@ -1,0 +1,37 @@
+﻿Team Responsibilities:
+
+
+Stanley Ku (403576238)
+-Implemented socket calls in setting up proxy server and client connections
+-Implemented basic object fetching (GET)
+-Implemented multi-threading and locking
+-Implemented fetching from remote server
+-Implemented caching logic for data and connections
+-Implemented connection limits
+-Implemented cache replacement policy for remote server connections
+-Implemented connection timeout handler
+-Implemented proxy server exit handler
+-Added functionality to Cache and Page classes
+-Got code to pass all test cases
+-Commented and cleaned up code
+-Wrote README
+
+
+Jorge Munoz (004364096)
+-Implemented Conditional GET/
+-Designed Cache Class and implementation logic
+-Designed Page Class
+-Parsing functions
+-Provided modified python test scripts for additional testing
+-Testing on SEASNET servers
+
+
+Brian Liu (404354948)
+-Worked on documentation/README
+-Worked on exit handler
+-Worked on limiting incoming connections < 20
+-Ran valgrind to ensure no memory leaks
+-Contacted TA regarding implementations of spec
+        -proxy connection timeout issues
+        -gracefully exiting from proxy
+        -running tools to make sure no memory leakage (valgrind, memcheckcpp)
