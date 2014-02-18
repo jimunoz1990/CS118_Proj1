@@ -8,65 +8,89 @@ Below are additional details and specifics of our implementation. It lists all t
 ________________
 
 
-Proxy(http-proxy.cc/h) - (Persistently manages connections between client and remote server.  Closes either connection if there is no no activity for TIMEOUT number of seconds.  If cache contains URL it will fetch from cache.)
+Proxy(http-proxy.cc/h)
+-Persistently manages connections between client and remote server.  Closes either connection if there is no no activity for TIMEOUT number of seconds.  If cache contains URL it will fetch from cache.)
+
 Proxy Functions
 * time_t timeConvert(string s)
-        Helper function to convert a string s into a time_t. 
+Helper function to convert a string s into a time_t. 
+
 * long cacheParse(string s
 Determines whether we can cache the incoming HTTP response based on the cache-control header field.  If the cache-control header field contains “public”, “private”, “no-cache, or “no-store” we return 0.  If there is no cache-control header field we attempt to return the max-age: as specified by the max age header field.  If there is no max-age field either we also return 0.
+
 * int fetchFromRemoteHost(int sock_fd, string& response)
 Fetches data from remote host given the socket  sock_fd.  Returns -1 when it either receives an error in fetching the data (recv function returns -1).  On receiving no response from the server, the thread will sleep for .1 seconds then check the socket again for a response.  If there is stil no response after 35 checks or, we return -1.  On receiving a successful response from the server, the function returns 1 and fills the std:: string response by reference with the message body content of the http response.  
+
 * void makeRequestConnection(HttpRequest request, int sock_fd)
 Checks to see we already have an existing persistent connection to the host associated with the HttpRequest by checking the connection cache, and if not establishes a persistent connection from the proxy to the remote server.  If a previous persistent connection exists in the cache and is still alive, we set the remote_server_fd to the existing alive connection.  If the connection exists in the cache but the connection is closed, we close the socket and open a new persistent connection to the server.   Before we check, modify, or delete the connection in the cache, we make sure to acquire the cache connection mutex and then release it after reading, modifying, or removing it.  
+
 * void connectionHandler(int sock_fd)
 Handles connection for each client thread, given the client side socket fd.  Passed as a function pointer to the boost::thread_group.create function.  It will properly respond to the client’s request, either by fetching from our URL - Page Cache or from the remote host directly.
+
 * void cacheCleanupHandler()
-     Used to clean cache periodically.  Passed as a function pointer to the boost:thread_group.create function.  Calls cache class functions cacheConnectionCleanup() and cacheClientCleanup(), which will clear the cache of stale objects.
+Used to clean cache periodically.  Passed as a function pointer to the boost:thread_group.create function.  Calls cache class functions cacheConnectionCleanup() and cacheClientCleanup(), which will clear the cache of stale objects.
+
 * void exitHandler()
-   Function which runs in its own thread handling proper proxy exiting.  When user presses ‘x’and then “return” handler will get triggered, calling the cache function killAll(), which closes all open sockets.  
+Function which runs in its own thread handling proper proxy exiting.  When user presses ‘x’and then “return” handler will get triggered, calling the cache function killAll(), which closes all open sockets.  
 Http-connection.cc/.h - (contains functions used to create connections from the proxy to client and proxy to server.  Also contains a function to return a pointer  to the sin_addr associated with the sockaddr.)  
+
 * void* get_in_addr(struct sock addr *sa);
-        Returns the memory address of the sin_addr/sin_addr6 associated with the sockaddr sa.
-* int makeServerConnection(const char *port)
+Returns the memory address of the sin_addr/sin_addr6 associated with the sockaddr sa.
+
+* int makeServerConnection(const char *port);
 Function used by proxy to create to create our server by binding socket bound to port number “port”.  Returns the corresponding sockfd.  Returns -1 if there are any errors creating the addrinfo for the server.  Returns -2 if the sockfd fails to bind to port.
-* int makeClientConnection(const char * host, const char *port)
-        Used by proxy to create a connection using a sockfd to the remote server(host) on port number “port”.  Returns the corresponding sockfd if successful, -1 if error, and -2 if it fails to bind to the given port.
+
+* int makeClientConnection(const char * host, const char *port);
+Used by proxy to create a connection using a sockfd to the remote server(host) on port number “port”.  Returns the corresponding sockfd if successful, -1 if error, and -2 if it fails to bind to the given port.
 ________________
 Class Index
 Class List
-Here are the classes, structs, unions and interfaces with brief descriptions:
+Here are the classes we implemented in designing our proxy:
 * Cache (http-cache.cc and http-cache.h)
-   * Class to cache objects that fetched through HTTP responses.  Also is used as a cache to keep track of  connections between client->proxy and proxy->server.           
+   * Class to cache objects that fetched through HTTP responses.  
+   * Also is used as a cache to keep track of connections between client->proxy and proxy->server.           
 * Page (http-page.cc and http-page.h)
    * Class to store HTTP request info in the cache 
 ________________
 Class Documentation
-Cache Class Reference
-Cache Class Member Functions
+Cache Class Member Functions:
+
 * Page * getFromStore (std::string URL)
 Retrieves a pointer to the Page Object given a string representing the URL (“host//object”).  Returns a null pointer if the Page does not exist.
-* void removeFromStore (std::string URL)
+
+* void removeFromStore (std::string URL);
 Removes the HTTP Response info along with the URL from the cache.
-* void addToStore (std::string URL, Page webpg)
+
+* void addToStore (std::string URL, Page webpg);
 Stores the HTTP Response URL and info into the cache, using the URL as key and 
-* void addToConnections (std::string URL, int sock_fd)
+
+* void addToConnections (std::string URL, int sock_fd);
 Add proxy->remote-server connection sock_fd to connections. 
-* int getFromConnections (std::string URL)
+
+* int getFromConnections (std::string URL);
 Returns the sock_fd for proxy->server connection to URL. Returns null if URL does not exist in cache.
-* void removeFromConnections (std::string URL)
+
+* void removeFromConnections (std::string URL);
 Removes a connection from the cache, given a URL.  
-* void cacheReplacementPolicy ()
+
+* void cacheReplacementPolicy ();
 Used to decide which socket to close and which connection to remove from cache, when the cache gets full.  
-* void cacheConnectionCleanup ()
+
+* void cacheConnectionCleanup ();
 Used to decide which socket to close and which connection to remove from cache, when the cache gets full. 
-* void addToClients(int sock_fd)
+
+* void addToClients(int sock_fd);
 Adds the client with sockfd “sock_fd” to the client cache.
-* void removeFromClients(int sock_fd)
+
+* void removeFromClients(int sock_fd);
 Removes the client with sockfd “sock_fd” from client cache.
-* int getNumClients()
+
+* int getNumClients();
 Returns number of clients ->proxy connections stored in cache.
-* void killAll()
+
+* void killAll();
 Iterates through two std:: Maps in the Cache Class (client->proxy connections, and proxy->server connections) and closes each of the socket individually.  Called by our exit handler function to ensure sockets are properly closed.
+
 Public Attributes (mutexes used for locking for multithreading)
 * boost::mutex cache_store_mutex
 * boost::mutex cache_connections_mutex
@@ -77,17 +101,24 @@ ________________
 
 
 Page Class Reference
+
 Public Member Functions
+
 * Page (time_t expTime, std::string lastMod, std::string entityTag, std::string dat)
         Constructor for page class.  Takes as parameters time_t expTime (expiration time) std::string lastMod(last time modified), std::string entityTa        g, and std::string data containing the message body data.
+
 * std::string getLastModify ()
-        Returns the last time the URL content was modified as specified by the cached request’s header.
+Returns the last time the URL content was modified as specified by the cached request’s header.
+
 * time_t getExpire ()
-        Returns the expiration time of the page.
+Returns the expiration time of the page.
+
 * string getETag ()
-        Returns as an std::string the entity tag of the page.
+Returns as an std::string the entity tag of the page.
+
 * string getData ()
-        Returns as a std::string the message body content.
+Returns as a std::string the message body content.
+
 * bool isExpired ()
-        Returns whether the page has expired.
+Returns whether the page has expired.
 ________________
